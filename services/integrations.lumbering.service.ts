@@ -21,7 +21,7 @@ import { IntegrationsMixin, IntegrationStats } from '../mixins/integrations.mixi
   crons: [
     {
       name: 'integrationsLumbering',
-      cronTime: '0 9 * * *',
+      cronTime: '0 4 * * *',
       timeZone: 'Europe/Vilnius',
       async onTick() {
         await this.call('integrations.lumbering.getData', {
