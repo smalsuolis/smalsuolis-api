@@ -14,7 +14,8 @@ import { IntegrationsMixin, IntegrationStats } from '../mixins/integrations.mixi
 @Service({
   name: 'integrations.lumbering',
   settings: {
-    zipUrl: 'https://lkmp.alisas.lt/static/lkmp-data.geojson.zip',
+//    zipUrl: 'https://lkmp.alisas.lt/static/lkmp-data.geojson.zip',
+    zipUrl: 'https://eima.smala.lt/lkmp/static/lkmp-data.geojson.zip',
   },
   mixins: [Cron, IntegrationsMixin()],
   crons: [
