@@ -87,7 +87,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
       .join('&');
 
     const url =
-      this.settings.baseUrl + '/datasets/gov/vtpsi/infostatyba/Statinys/:format/json?' + query;
+      this.settings.baseUrl + '/datasets/gov/ssva/infostatyba/Statinys/:format/json?' + query;
 
     let total = limit;
     if (!total) {
@@ -347,7 +347,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
       .map((i) => encodeURIComponent(i))
       .join('&');
 
-    const baseUrl = this.settings.baseUrl + '/datasets/gov/vtpsi/infostatyba/Adresas/:format/json';
+    const baseUrl = this.settings.baseUrl + '/datasets/gov/ssva/infostatyba/Adresas/:format/json';
     const url = `${baseUrl}?${query}`;
 
     const total = await this.getCount(ctx, baseUrl);
