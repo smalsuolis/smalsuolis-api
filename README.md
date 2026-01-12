@@ -55,11 +55,11 @@ This will start `redis`, `chrome`, `postgres` (with two databases: `smalsuolis` 
 
 2. (First time only) Prepare `.env` for `smalsuolis-api`.
 
-2.1. Copy `.env.example` to `.env`
+   2.1. Copy `.env.example` to `.env`
 
-2.2. Get auth API_KEY. Connect to database `jdbc:postgresql://localhost:5112/smalsuolis`, you will see two databases here `auth` and `smalsuolis`, go to `auth` database, `apps` table, and copy `api_key` from the Admin app (should be first).
+   2.2. Get auth API_KEY. Connect to database `jdbc:postgresql://localhost:5112/smalsuolis`, you will see two databases here `auth` and `smalsuolis`, go to `auth` database, `apps` table, and copy `api_key` from the Admin app (should be first).
 
-2.3 `AUTH_API_KEY=` value to `.env`.
+   2.3 `AUTH_API_KEY=` value to `.env`.
 
 3. Start the API server:
 
