@@ -1,22 +1,22 @@
 # Smalsuolis API
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/AplinkosMinisterija/smalsuolis-api/badge)](https://securityscorecards.dev/viewer/?platform=github.com&org={AplinkosMinisterija}&repo={smalsuolis-api})
-[![License](https://img.shields.io/github/license/AplinkosMinisterija/smalsuolis-api)](https://github.com/AplinkosMinisterija/smalsuolis-api/blob/main/LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/AplinkosMinisterija/smalsuolis-api)](https://github.com/AplinkosMinisterija/smalsuolis-api/issues)
-[![GitHub stars](https://img.shields.io/github/stars/AplinkosMinisterija/smalsuolis-api)](https://github.com/AplinkosMinisterija/smalsuolis-api/stargazers)
 
-This repository contains the source code and documentation for the Smalsuolis API, developed by the Aplinkos
-Ministerija.
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/smalsuolis/smalsuolis-api/badge)](https://securityscorecards.dev/viewer/?platform=github.com&org={smalsuolis}&repo={smalsuolis-api})
+[![License](https://img.shields.io/github/license/smalsuolis/smalsuolis-api)](https://github.com/smalsuolis/smalsuolis-api/blob/main/LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/smalsuolis/smalsuolis-api)](https://github.com/smalsuolis/smalsuolis-api/issues)
+[![GitHub stars](https://img.shields.io/github/stars/smalsuolis/smalsuolis-api)](https://github.com/smalsuolis/smalsuolis-api/stargazers)
+
+This repository contains the source code and documentation for the Smalsuolis API, developed by the Smalsuolis.
+
 ## Table of Contents
 
 - [About the Project](#about-the-project)
 - [Getting Started](#getting-started)
-    - [Installation](#installation)
-    - [Usage](#usage)
+  - [Installation](#installation)
+  - [Usage](#usage)
 - [OpenAPI](#openapi)
 - [Deployment](#deployment)
 - [Contributing](#contributing)
 - [License](#license)
-
 
 ## About the Project
 
@@ -28,10 +28,12 @@ To get started with the Smalsuolis API, follow the instructions below.
 
 ### Installation
 
+Use Node v20 (`nvm use 20`) and Yarn v1 (classic).
+
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/AplinkosMinisterija/smalsuolis-api.git
+   git clone https://github.com/smalsuolis/smalsuolis-api.git
    ```
 
 2. Install the required dependencies:
@@ -42,12 +44,26 @@ To get started with the Smalsuolis API, follow the instructions below.
    ```
 
 ### Usage
-1. Set up the required environment variables. Copy the `.env.example` file to `.env` and provide the necessary values for the variables.
 
-2. Start the API server:
+1. Start dependencies using Docker Compose:
 
    ```bash
    yarn dc:up
+   ```
+
+This will start `redis`, `chrome`, `postgres` (with two databases: `smalsuolis` and `auth`) and `auth` module.
+
+2. (First time only) Prepare `.env` for `smalsuolis-api`.
+
+   2.1. Copy `.env.example` to `.env`
+
+   2.2. Get auth API_KEY. Connect to database `jdbc:postgresql://localhost:5112/smalsuolis`, you will see two databases here `auth` and `smalsuolis`, go to `auth` database, `apps` table, and copy `api_key` from the Admin app (should be first).
+
+   2.3 `AUTH_API_KEY=` value to `.env`.
+
+3. Start the API server:
+
+   ```bash
    yarn dev
    ```
 
