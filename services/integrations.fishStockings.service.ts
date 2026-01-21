@@ -119,6 +119,21 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
     );
 
     for (let entry of response) {
+      // Validate coordinates before processing
+      if (
+        !entry.coordinates ||
+        typeof entry.coordinates.x !== 'number' ||
+        typeof entry.coordinates.y !== 'number' ||
+        !isFinite(entry.coordinates.x) ||
+        !isFinite(entry.coordinates.y)
+      ) {
+        this.logger.warn(
+          `Skipping fish stocking entry ${entry.id} due to invalid coordinates:`,
+          entry.coordinates,
+        );
+        continue;
+      }
+
       const fishesNames = entry.batches
         ?.map(
           (batch) =>
