@@ -1,0 +1,217 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main  # Deploys staging to VPS
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'  # Deploys production to VPS
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "app_host=${{ secrets.VPS_PROD_APP_HOST }}" >> $GITHUB_OUTPUT
+            echo "sentry_env=production" >> $GITHUB_OUTPUT
+            echo "container_suffix=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "app_host=${{ secrets.VPS_STAGING_APP_HOST }}" >> $GITHUB_OUTPUT
+            echo "sentry_env=staging" >> $GITHUB_OUTPUT
+            echo "container_suffix=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=production,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ENVIRONMENT=${{ steps.env.outputs.environment }}
+            VERSION=${{ github.sha }}
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          CONTAINER_SUFFIX: ${{ steps.env.outputs.container_suffix }}
+          IMAGE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && 'production' || 'latest' }}
+          APP_HOST: ${{ steps.env.outputs.app_host }}
+          DB_CONNECTION: ${{ startsWith(github.ref, 'refs/tags/') && secrets.VPS_PROD_DB_CONNECTION || secrets.VPS_STAGING_DB_CONNECTION }}
+          AUTH_HOST: ${{ startsWith(github.ref, 'refs/tags/') && secrets.VPS_PROD_AUTH_HOST || secrets.VPS_STAGING_AUTH_HOST }}
+          AUTH_API_KEY: ${{ secrets.AUTH_API_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTMARK_KEY: ${{ secrets.POSTMARK_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          REDIS_CONNECTION: ${{ startsWith(github.ref, 'refs/tags/') && secrets.VPS_PROD_REDIS_CONNECTION || secrets.VPS_STAGING_REDIS_CONNECTION }}
+          CHROME_WS_ENDPOINT: ${{ startsWith(github.ref, 'refs/tags/') && secrets.VPS_PROD_CHROME_WS_ENDPOINT || secrets.VPS_STAGING_CHROME_WS_ENDPOINT }}
+          AUTH_GROUP_ID: ${{ secrets.AUTH_GROUP_ID }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: CONTAINER_SUFFIX,IMAGE_TAG,APP_HOST,DB_CONNECTION,AUTH_HOST,AUTH_API_KEY,JWT_SECRET,POSTMARK_KEY,SENTRY_DSN,REDIS_CONNECTION,CHROME_WS_ENDPOINT,AUTH_GROUP_ID
+          script: |
+            # Ensure the shared proxy network exists
+            docker network create web_proxy || true
+            
+            # Login and Pull API image
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull ghcr.io/${{ github.repository }}:${IMAGE_TAG}
+            
+            # Pull supporting images
+            docker pull postgis/postgis:14-master
+            docker pull redis:latest
+            docker pull browserless/chrome:latest
+            docker pull ghcr.io/aplinkosministerija/biip-auth-api:1.2.9
+            
+            # Stop and remove old containers
+            docker stop smalsuolis-api-${CONTAINER_SUFFIX} || true
+            docker rm smalsuolis-api-${CONTAINER_SUFFIX} || true
+            
+            docker stop smalsuolis-postgres-${CONTAINER_SUFFIX} || true
+            docker rm smalsuolis-postgres-${CONTAINER_SUFFIX} || true
+            
+            docker stop smalsuolis-redis-${CONTAINER_SUFFIX} || true
+            docker rm smalsuolis-redis-${CONTAINER_SUFFIX} || true
+            
+            docker stop smalsuolis-chrome-${CONTAINER_SUFFIX} || true
+            docker rm smalsuolis-chrome-${CONTAINER_SUFFIX} || true
+            
+            docker stop smalsuolis-auth-${CONTAINER_SUFFIX} || true
+            docker rm smalsuolis-auth-${CONTAINER_SUFFIX} || true
+            
+            # Create internal network for this environment
+            docker network create smalsuolis-internal-${CONTAINER_SUFFIX} || true
+            
+            # Start PostgreSQL
+            docker run -d \
+              --name smalsuolis-postgres-${CONTAINER_SUFFIX} \
+              --network smalsuolis-internal-${CONTAINER_SUFFIX} \
+              --restart unless-stopped \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=postgres \
+              -e POSTGRES_DB=smalsuolis \
+              -e TZ='Etc/GMT' \
+              -e PGTZ='Etc/GMT' \
+              -v smalsuolis-postgres-data-${CONTAINER_SUFFIX}:/var/lib/postgresql/data \
+              postgis/postgis:14-master
+            
+            # Wait for PostgreSQL to be ready
+            echo "Waiting for PostgreSQL to be ready..."
+            sleep 10
+            
+            # Create auth database
+            docker exec smalsuolis-postgres-${CONTAINER_SUFFIX} psql -U postgres -c "CREATE DATABASE auth;" || true
+            
+            # Start Redis
+            docker run -d \
+              --name smalsuolis-redis-${CONTAINER_SUFFIX} \
+              --network smalsuolis-internal-${CONTAINER_SUFFIX} \
+              --restart unless-stopped \
+              redis:latest
+            
+            # Start Chrome
+            docker run -d \
+              --name smalsuolis-chrome-${CONTAINER_SUFFIX} \
+              --network smalsuolis-internal-${CONTAINER_SUFFIX} \
+              --restart unless-stopped \
+              --platform linux/amd64 \
+              -e DEFAULT_LAUNCH_ARGS='["--window-size=1920,1080"]' \
+              -e WORKSPACE_DELETE_EXPIRED=true \
+              -e MAX_CONCURRENT_SESSIONS=10 \
+              -e MAX_QUEUE_LENGTH=10 \
+              -e CONNECTION_TIMEOUT=3600000 \
+              --memory=8g \
+              --memory-reservation=4g \
+              browserless/chrome:latest
+            
+            # Start Auth API
+            docker run -d \
+              --name smalsuolis-auth-${CONTAINER_SUFFIX} \
+              --network smalsuolis-internal-${CONTAINER_SUFFIX} \
+              --restart unless-stopped \
+              -e PORT=3000 \
+              -e NAMESPACE= \
+              -e SERVICEDIR=dist/services \
+              -e DB_CONNECTION=postgresql://postgres:postgres@smalsuolis-postgres-${CONTAINER_SUFFIX}:5432/auth \
+              -e REDIS_CONNECTION=redis://smalsuolis-redis-${CONTAINER_SUFFIX} \
+              -e JWT_SECRET=${JWT_SECRET} \
+              -e DEFAULT_SUPER_ADMIN_EMAIL=superadmin@smalsuolis.lt \
+              -e DEFAULT_SUPER_ADMIN_PASSWORD=LabaiSlaptas123! \
+              -e DEFAULT_PROJECT_NAME_GENITIVE=Smalsuolio \
+              ghcr.io/aplinkosministerija/biip-auth-api:1.2.9
+            
+            # Wait for Auth API to be ready
+            echo "Waiting for Auth API to be ready..."
+            sleep 15
+            
+            # Start Smalsuolis API
+            docker run -d \
+              --name smalsuolis-api-${CONTAINER_SUFFIX} \
+              --network smalsuolis-internal-${CONTAINER_SUFFIX} \
+              --restart unless-stopped \
+              -e NODE_ENV=production \
+              -e PORT=3000 \
+              -e DB_CONNECTION=postgresql://postgres:postgres@smalsuolis-postgres-${CONTAINER_SUFFIX}:5432/smalsuolis \
+              -e CHROME_WS_ENDPOINT=ws://smalsuolis-chrome-${CONTAINER_SUFFIX}:3000 \
+              -e AUTH_HOST=http://smalsuolis-auth-${CONTAINER_SUFFIX}:3000 \
+              -e AUTH_API_KEY=${AUTH_API_KEY} \
+              -e AUTH_GROUP_ID=${AUTH_GROUP_ID} \
+              -e POSTMARK_KEY=${POSTMARK_KEY} \
+              -e REDIS_CONNECTION=redis://smalsuolis-redis-${CONTAINER_SUFFIX} \
+              -e JWT_SECRET=${JWT_SECRET} \
+              -e SERVER_HOST=${APP_HOST} \
+              -e APP_HOST=${APP_HOST} \
+              -e SENTRY_DSN=${SENTRY_DSN} \
+              -e ENVIRONMENT=${{ steps.env.outputs.environment }} \
+              -e VERSION=${{ github.sha }} \
+              ghcr.io/${{ github.repository }}:${IMAGE_TAG}
+            
+            # Connect API to web_proxy network for Caddy access
+            docker network connect web_proxy smalsuolis-api-${CONTAINER_SUFFIX} || true
+            
+            # Cleanup old images
+            docker image prune -af
