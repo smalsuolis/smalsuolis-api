@@ -101,11 +101,10 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker pull ghcr.io/${{ github.repository }}:${IMAGE_TAG}
             
-            # Pull supporting images
-            docker pull postgis/postgis:14-master
+            # Pull supporting images (ARM64 compatible)
+            docker pull postgis/postgis:14-3.4-alpine
             docker pull redis:latest
             docker pull browserless/chrome:latest
-            docker pull ghcr.io/aplinkosministerija/biip-auth-api:1.2.9
             
             # Stop and remove old containers
             docker stop smalsuolis-api-${CONTAINER_SUFFIX} || true
@@ -126,7 +125,7 @@ jobs:
             # Create internal network for this environment
             docker network create smalsuolis-internal-${CONTAINER_SUFFIX} || true
             
-            # Start PostgreSQL
+            # Start PostgreSQL (ARM64 compatible)
             docker run -d \
               --name smalsuolis-postgres-${CONTAINER_SUFFIX} \
               --network smalsuolis-internal-${CONTAINER_SUFFIX} \
@@ -137,7 +136,7 @@ jobs:
               -e TZ='Etc/GMT' \
               -e PGTZ='Etc/GMT' \
               -v smalsuolis-postgres-data-${CONTAINER_SUFFIX}:/var/lib/postgresql/data \
-              postgis/postgis:14-master
+              postgis/postgis:14-3.4-alpine
             
             # Wait for PostgreSQL to be ready
             echo "Waiting for PostgreSQL to be ready..."
@@ -153,7 +152,7 @@ jobs:
               --restart unless-stopped \
               redis:latest
             
-            # Start Chrome
+            # Start Chrome (with AMD64 emulation for now)
             docker run -d \
               --name smalsuolis-chrome-${CONTAINER_SUFFIX} \
               --network smalsuolis-internal-${CONTAINER_SUFFIX} \
@@ -164,15 +163,16 @@ jobs:
               -e MAX_CONCURRENT_SESSIONS=10 \
               -e MAX_QUEUE_LENGTH=10 \
               -e CONNECTION_TIMEOUT=3600000 \
-              --memory=8g \
-              --memory-reservation=4g \
+              --memory=4g \
+              --memory-reservation=2g \
               browserless/chrome:latest
             
-            # Start Auth API
+            # Start Auth API (with AMD64 emulation for now)
             docker run -d \
               --name smalsuolis-auth-${CONTAINER_SUFFIX} \
               --network smalsuolis-internal-${CONTAINER_SUFFIX} \
               --restart unless-stopped \
+              --platform linux/amd64 \
               -e PORT=3000 \
               -e NAMESPACE= \
               -e SERVICEDIR=dist/services \
@@ -186,7 +186,7 @@ jobs:
             
             # Wait for Auth API to be ready
             echo "Waiting for Auth API to be ready..."
-            sleep 15
+            sleep 20
             
             # Start Smalsuolis API
             docker run -d \
