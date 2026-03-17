@@ -256,7 +256,7 @@ export default class EventsService extends moleculer.Service {
 
     eventsCountByAppType?.forEach((item) => {
       const count = Number(item.count);
-      const path = `byApp.${item.appType}.count`;
+      const path = ['byApp', item.appType, 'count'];
       const existingCount = _.get(stats, path, 0);
       _.set(stats, path, existingCount + count);
       stats.count += count;
@@ -266,7 +266,7 @@ export default class EventsService extends moleculer.Service {
       const tag = tagsById[item.tagId];
       const count = Number(item.count);
 
-      const path = `byApp.${tag.appType}.byTag.${tag.name}.count`;
+      const path = ['byApp', tag.appType, 'byTag', tag.name, 'count'];
       const existingCount = _.get(stats, path, 0);
       _.set(stats, path, existingCount + count);
     });
@@ -275,7 +275,7 @@ export default class EventsService extends moleculer.Service {
       const tag = tagsById[item.tagId];
       const count = Number(item.sum);
 
-      const path = `byApp.${tag.appType}.byTag.${tag.name}.${item.tagName}`;
+      const path = ['byApp', tag.appType, 'byTag', tag.name, item.tagName];
       const existingCount = _.get(stats, path, 0);
       _.set(stats, path, existingCount + count);
     });
