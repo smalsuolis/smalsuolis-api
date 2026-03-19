@@ -226,16 +226,38 @@ export default class EventsService extends moleculer.Service {
 
     const eventsCountByTagData = await knex
       .select(knex.raw('td.tag_id::numeric'), 'td.tagName')
-      .sum(knex.raw('td.tag_value::numeric'))
+      .sum({
+        count: knex.raw("(NULLIF(regexp_replace(td.tag_value, '[^0-9.]', '', 'g'), ''))::numeric"),
+      })
+      .sum({ area: knex.raw('td.tag_value_area::numeric') })
       .from(
         knex
           .select(
-            knex.raw(`jsonb_array_elements(events.tags_data)->>'id' as tag_id`),
-            knex.raw(`jsonb_array_elements(events.tags_data)->>'name' as tag_name`),
-            knex.raw(`jsonb_array_elements(events.tags_data)->>'value' as tag_value`),
+            'elem.tag_id',
+            'elem.tag_name',
+            'elem.tag_value',
+            knex.raw(`
+              CASE 
+                WHEN elem.tag_name IN ('Plynas', 'Plynas sanitarinis', 'Lydimo') THEN 
+                  (NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric * 1
+                WHEN elem.tag_name = 'Atvejiniai' THEN 
+                  (NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric * 0.5
+                ELSE 
+                  (NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric * 0.25
+              END as tag_value_area
+            `),
           )
-          .from(eventsQuery.as('events'))
-          .whereNotNull('events.tagsData')
+          .from(
+            knex
+              .select(
+                knex.raw(`jsonb_array_elements(events.tags_data)->>'id' as tag_id`),
+                knex.raw(`jsonb_array_elements(events.tags_data)->>'name' as tag_name`),
+                knex.raw(`jsonb_array_elements(events.tags_data)->>'value' as tag_value`),
+              )
+              .from(eventsQuery.as('events'))
+              .whereNotNull('events.tagsData')
+              .as('elem'),
+          )
           .as('td'),
       )
       .groupBy(['tagId', 'tagName']);
@@ -266,6 +288,7 @@ export default class EventsService extends moleculer.Service {
       const tag = tagsById[item.tagId];
       const count = Number(item.count);
 
+      // Web expects the tag name as the key, with an object containing count
       const path = ['byApp', tag.appType, 'byTag', tag.name, 'count'];
       const existingCount = _.get(stats, path, 0);
       _.set(stats, path, existingCount + count);
@@ -273,11 +296,23 @@ export default class EventsService extends moleculer.Service {
 
     eventsCountByTagData?.forEach((item) => {
       const tag = tagsById[item.tagId];
-      const count = Number(item.sum);
+      const count = Number(item.count || 0);
+      const area = Number(item.area || 0);
 
-      const path = ['byApp', tag.appType, 'byTag', tag.name, item.tagName];
-      const existingCount = _.get(stats, path, 0);
-      _.set(stats, path, existingCount + count);
+      const categoryAreaPath = ['byApp', tag.appType, 'byTag', tag.name, 'area'];
+      const categoryCalculatedAreaPath = [
+        'byApp',
+        tag.appType,
+        'byTag',
+        tag.name,
+        'calculatedArea',
+      ];
+
+      const existingArea = _.get(stats, categoryAreaPath, 0);
+      const existingCalculatedArea = _.get(stats, categoryCalculatedAreaPath, 0);
+
+      _.set(stats, categoryAreaPath, existingArea + count);
+      _.set(stats, categoryCalculatedAreaPath, existingCalculatedArea + area);
     });
 
     return stats;
