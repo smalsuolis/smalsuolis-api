@@ -46,7 +46,7 @@ interface FishStocking {
     };
   }[];
   status: 'FINISHED' | 'INSPECTED' | 'UPCOMING' | 'ONGOING';
-  coordinates: { x: number; y: number };
+  coordinates: number[];
   geom: any;
 }
 
@@ -118,14 +118,16 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
       },
     );
 
-    for (let entry of response) {
+    for (let entry of response as any[]) {
       // Validate coordinates before processing
       if (
         !entry.coordinates ||
-        typeof entry.coordinates.x !== 'number' ||
-        typeof entry.coordinates.y !== 'number' ||
-        !isFinite(entry.coordinates.x) ||
-        !isFinite(entry.coordinates.y)
+        !Array.isArray(entry.coordinates) ||
+        entry.coordinates.length < 2 ||
+        typeof entry.coordinates[0] !== 'number' ||
+        typeof entry.coordinates[1] !== 'number' ||
+        !isFinite(entry.coordinates[0]) ||
+        !isFinite(entry.coordinates[1])
       ) {
         this.logger.warn(
           `Skipping fish stocking entry ${entry.id} due to invalid coordinates:`,
@@ -136,14 +138,17 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
 
       const fishesNames = entry.batches
         ?.map(
-          (batch) =>
-            `${batch.fishType.label} (${batch.fishAge.label.toLowerCase()}) ${
+          (batch: any) =>
+            `${batch.fishType?.label || ''} (${batch.fishAge?.label?.toLowerCase() || ''}) ${
               batch.reviewAmount || batch.amount
             } vnt.`,
         )
         .join(', ');
       const transform = transformation('EPSG:4326', '3346');
-      const transformedCoordinates = transform.forward([entry.coordinates.x, entry.coordinates.y]);
+      const transformedCoordinates = transform.forward([
+        entry.coordinates[0],
+        entry.coordinates[1],
+      ]);
 
       const geom = getFeatureCollection({
         type: 'Point',
@@ -151,7 +156,7 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
       });
 
       const bodyJSON = [
-        { title: 'Būsena', value: StatusLabels[entry.status] },
+        { title: 'Būsena', value: StatusLabels[entry.status as keyof typeof StatusLabels] },
         { title: 'Žuvys', value: fishesNames || '-' },
       ];
 

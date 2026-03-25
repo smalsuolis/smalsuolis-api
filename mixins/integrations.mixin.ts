@@ -100,10 +100,17 @@ export function IntegrationsMixin() {
         });
 
         // Let's save old events (older than 30 days) as initial events
+        // Don't set createdAt in the future though
         initial = initial || differenceInDays(new Date(), event.startAt) > 30;
 
         if (initial) {
-          event.createdAt = event.startAt;
+          if (event.startAt && event.startAt <= new Date()) {
+            event.createdAt = event.startAt;
+          } else {
+            event.createdAt = new Date();
+          }
+        } else if (!existingEvent?.id) {
+          event.createdAt = new Date();
         }
 
         this.validExternalIds.add(event.externalId);
@@ -153,7 +160,13 @@ export function IntegrationsMixin() {
           // Let's save old events (older than 30 days) as initial events
           initial = initial || differenceInDays(new Date(), event.startAt) > 30;
           if (initial) {
-            event.createdAt = event.startAt;
+            if (event.startAt && event.startAt <= new Date()) {
+              event.createdAt = event.startAt;
+            } else {
+              event.createdAt = new Date();
+            }
+          } else if (!existingEventsMap[event.externalId]) {
+            event.createdAt = new Date();
           }
 
           this.validExternalIds.add(event.externalId);
