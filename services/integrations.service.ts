@@ -26,6 +26,7 @@ interface AppTypeStats {
 
 interface IntegrationsStats {
   lastGlobalUpdate: Date | null;
+  firstGlobalEvent: Date | null;
   byAppType: AppTypeStats[];
   apps: LastUpdateInfo[];
 }
@@ -70,9 +71,9 @@ export default class IntegrationsService extends moleculer.Service {
       .groupBy('apps.id', 'apps.name', 'apps.key')
       .orderBy('lastUpdate', 'desc');
 
-    // Get the most recent update across all apps
+    // Get the most recent and earliest event across all apps
     const globalLastUpdate = await knex
-      .select(knex.raw('MAX(created_at) as last_update'))
+      .select(knex.raw('MAX(created_at) as last_update, MIN(start_at) as first_event'))
       .from('events')
       .whereNull('deletedAt')
       .first();
@@ -145,6 +146,9 @@ export default class IntegrationsService extends moleculer.Service {
     const result: IntegrationsStats = {
       lastGlobalUpdate: globalLastUpdate?.last_update
         ? new Date(globalLastUpdate.last_update)
+        : null,
+      firstGlobalEvent: globalLastUpdate?.first_event
+        ? new Date(globalLastUpdate.first_event)
         : null,
       byAppType,
       apps,
