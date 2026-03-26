@@ -13,12 +13,14 @@ interface LastUpdateInfo {
   appType: string;
   lastUpdate: Date | null;
   eventCount: number;
+  lastUpdateCount: number;
 }
 
 interface AppTypeStats {
   appType: string;
   lastUpdate: Date | null;
   eventCount: number;
+  lastUpdateCount: number;
   apps: LastUpdateInfo[];
 }
 
@@ -67,6 +69,30 @@ export default class IntegrationsService extends moleculer.Service {
       .whereNull('deletedAt')
       .first();
 
+    // Get count of events added in the last update batch (events on same date as the latest update per app)
+    let lastUpdateCountMap = new Map<number, number>();
+    try {
+      const lastUpdateCountResult = await knex.raw(`
+        WITH last_updates AS (
+          SELECT app_id, MAX(created_at) as last_update_time
+          FROM events
+          WHERE deleted_at IS NULL
+          GROUP BY app_id
+        )
+        SELECT e.app_id as "appId", COUNT(e.id) as count
+        FROM events e
+        JOIN last_updates lu ON e.app_id = lu.app_id AND DATE(e.created_at) = DATE(lu.last_update_time)
+        WHERE e.deleted_at IS NULL
+        GROUP BY e.app_id
+      `);
+      const rows = lastUpdateCountResult?.rows || lastUpdateCountResult || [];
+      lastUpdateCountMap = new Map<number, number>(
+        rows.map((r: any) => [Number(r.appId ?? r.app_id), parseInt(r.count, 10)]),
+      );
+    } catch (_e) {
+      // non-critical, fall back to zero counts
+    }
+
     const apps: LastUpdateInfo[] = appsLastUpdate.map((row: any) => ({
       app: row.app,
       appId: row.appId,
@@ -74,6 +100,7 @@ export default class IntegrationsService extends moleculer.Service {
       appType: APP_TYPE[row.appKey] || 'unknown',
       lastUpdate: row.lastUpdate ? new Date(row.lastUpdate) : null,
       eventCount: parseInt(row.eventCount, 10),
+      lastUpdateCount: lastUpdateCountMap.get(row.appId) || 0,
     }));
 
     // Group by app type and calculate stats
@@ -85,6 +112,7 @@ export default class IntegrationsService extends moleculer.Service {
           appType: app.appType,
           lastUpdate: null,
           eventCount: 0,
+          lastUpdateCount: 0,
           apps: [],
         });
       }
@@ -92,6 +120,7 @@ export default class IntegrationsService extends moleculer.Service {
       const typeStats = appTypeMap.get(app.appType)!;
       typeStats.apps.push(app);
       typeStats.eventCount += app.eventCount;
+      typeStats.lastUpdateCount += app.lastUpdateCount;
 
       // Update lastUpdate to the most recent one
       if (app.lastUpdate && (!typeStats.lastUpdate || app.lastUpdate > typeStats.lastUpdate)) {
