@@ -39,6 +39,10 @@ interface IntegrationsStats {
   ],
 })
 export default class IntegrationsService extends moleculer.Service {
+  private cachedStats: IntegrationsStats | null = null;
+  private cacheExpiry: number = 0;
+  private readonly CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
   @Action({
     rest: {
       method: 'GET',
@@ -46,7 +50,11 @@ export default class IntegrationsService extends moleculer.Service {
     },
     auth: EndpointType.PUBLIC,
   })
-  async getLastUpdate(ctx: Context): Promise<IntegrationsStats> {
+  async getLastUpdate(ctx: Context<{ noCache?: boolean }>): Promise<IntegrationsStats> {
+    if (this.cachedStats && Date.now() < this.cacheExpiry && !ctx.params.noCache) {
+      return this.cachedStats;
+    }
+
     const adapter = await this.getAdapter(ctx);
     const knex = adapter.client;
 
@@ -134,12 +142,17 @@ export default class IntegrationsService extends moleculer.Service {
       return b.lastUpdate.getTime() - a.lastUpdate.getTime();
     });
 
-    return {
+    const result: IntegrationsStats = {
       lastGlobalUpdate: globalLastUpdate?.last_update
         ? new Date(globalLastUpdate.last_update)
         : null,
       byAppType,
       apps,
     };
+
+    this.cachedStats = result;
+    this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
+
+    return result;
   }
 }

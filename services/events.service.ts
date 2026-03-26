@@ -183,6 +183,10 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
   },
 })
 export default class EventsService extends moleculer.Service {
+  private statsCache = new Map<string, { data: any; expiry: number }>();
+  private readonly STATS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+  private readonly STATS_CACHE_MAX_ENTRIES = 2000;
+
   @Action({
     rest: {
       method: 'GET',
@@ -191,7 +195,12 @@ export default class EventsService extends moleculer.Service {
     },
     auth: EndpointType.PUBLIC,
   })
-  async stats(ctx: Context<{ query: any }>) {
+  async stats(ctx: Context<{ query: any; noCache?: boolean }>) {
+    const cacheKey = JSON.stringify(ctx.params.query ?? null);
+    const cached = this.statsCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiry && !ctx.params.noCache) {
+      return cached.data;
+    }
     const adapter = await this.getAdapter(ctx);
     const table = adapter.getTable();
     const knex: Knex = adapter.client;
@@ -314,6 +323,11 @@ export default class EventsService extends moleculer.Service {
       _.set(stats, categoryAreaPath, existingArea + count);
       _.set(stats, categoryCalculatedAreaPath, existingCalculatedArea + area);
     });
+
+    if (this.statsCache.size >= this.STATS_CACHE_MAX_ENTRIES) {
+      this.statsCache.delete(this.statsCache.keys().next().value);
+    }
+    this.statsCache.set(cacheKey, { data: stats, expiry: Date.now() + this.STATS_CACHE_TTL_MS });
 
     return stats;
   }
