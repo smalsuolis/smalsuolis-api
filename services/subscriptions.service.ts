@@ -32,6 +32,7 @@ interface Fields extends CommonFields {
   geom: FeatureCollection;
   frequency: Frequency;
   active: boolean;
+  textFilter?: string;
   geomWithBuffer?: FeatureCollection;
   eventsCount?: {
     allTime: number;
@@ -151,6 +152,11 @@ export type Subscription<
         values: Object.values(Frequency),
       },
       active: 'boolean', // is subscription active
+      textFilter: {
+        type: 'string',
+        optional: true,
+        columnName: 'text_filter',
+      },
       ...COMMON_FIELDS,
     },
     scopes: {
@@ -299,6 +305,7 @@ export default class SubscriptionsService extends moleculer.Service {
         `),
         'apps',
         'frequency',
+        'text_filter',
       )
       .from('subscriptions');
 
@@ -330,8 +337,9 @@ export default class SubscriptionsService extends moleculer.Service {
           knex.raw(`
             ST_Intersects(s.geom, ST_Centroid(e.geom))
         `),
-        ).andOn(
-          knex.raw(`
+        )
+          .andOn(
+            knex.raw(`
           CASE
             WHEN jsonb_array_length(s.apps) > 0 THEN e.app_id IN (
               SELECT
@@ -340,7 +348,16 @@ export default class SubscriptionsService extends moleculer.Service {
             ELSE TRUE
           END
           `),
-        );
+          )
+          .andOn(
+            knex.raw(`
+          CASE
+            WHEN s.text_filter IS NOT NULL AND s.text_filter <> '' THEN
+              e.name ILIKE '%' || s.text_filter || '%' OR e.body ILIKE '%' || s.text_filter || '%'
+            ELSE TRUE
+          END
+          `),
+          );
       })
       .groupBy('s.id');
 

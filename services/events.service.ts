@@ -62,10 +62,21 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
     return query;
   }
 
-  const subscriptionQuery = subscriptions.map((subscription) => ({
-    ...(!!subscription.apps?.length && { app: { $in: subscription.apps } }),
-    $raw: intersectsQuery('geom', subscription.geomWithBuffer, LKS_SRID),
-  }));
+  const subscriptionQuery = subscriptions.map((subscription) => {
+    const condition: any = {
+      ...(!!subscription.apps?.length && { app: { $in: subscription.apps } }),
+      $raw: intersectsQuery('geom', subscription.geomWithBuffer, LKS_SRID),
+    };
+
+    if (subscription.textFilter) {
+      condition.$or = [
+        { name: { $ilike: `%${subscription.textFilter}%` } },
+        { body: { $ilike: `%${subscription.textFilter}%` } },
+      ];
+    }
+
+    return condition;
+  });
 
   if (query?.$or) {
     query.$and = [query?.$or, { $or: subscriptionQuery }];
