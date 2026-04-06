@@ -154,7 +154,6 @@ export type Subscription<
       active: 'boolean', // is subscription active
       textFilter: {
         type: 'string',
-        optional: true,
         columnName: 'text_filter',
       },
       ...COMMON_FIELDS,
