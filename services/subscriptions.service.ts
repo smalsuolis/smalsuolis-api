@@ -152,10 +152,7 @@ export type Subscription<
         values: Object.values(Frequency),
       },
       active: 'boolean', // is subscription active
-      textFilter: {
-        type: 'string',
-        columnName: 'text_filter',
-      },
+      textFilter: 'string',
       ...COMMON_FIELDS,
     },
     scopes: {
