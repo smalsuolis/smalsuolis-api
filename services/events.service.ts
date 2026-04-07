@@ -69,10 +69,9 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
     };
 
     if (subscription.textFilter) {
-      condition.$or = [
-        { name: { $ilike: `%${subscription.textFilter}%` } },
-        { body: { $ilike: `%${subscription.textFilter}%` } },
-      ];
+      const escaped = subscription.textFilter.replace(/'/g, "''");
+      const textCondition = `(name ILIKE '%${escaped}%' OR body ILIKE '%${escaped}%')`;
+      condition.$raw = condition.$raw ? `(${condition.$raw}) AND ${textCondition}` : textCondition;
     }
 
     return condition;
