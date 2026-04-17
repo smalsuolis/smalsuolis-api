@@ -93,7 +93,7 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
     DbConnection({
       collection: 'events',
     }),
-    PostgisMixin({ srid: LKS_SRID }),
+    PostgisMixin({ srid: LKS_SRID, geojson: { maxDecimalDigits: 2 } }),
   ],
   settings: {
     fields: {
