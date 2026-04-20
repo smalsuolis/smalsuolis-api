@@ -1,7 +1,7 @@
 'use strict';
 
 import moleculer, { Context } from 'moleculer';
-import { Action, Service } from 'moleculer-decorators';
+import { Action, Event, Service } from 'moleculer-decorators';
 import { EndpointType } from '../types';
 import DbConnection from '../mixins/database.mixin';
 import { APP_TYPE } from './apps.service';
@@ -59,10 +59,15 @@ export default class IntegrationsService extends moleculer.Service {
     const adapter = await this.getAdapter(ctx);
     const knex = adapter.client;
 
-    // Get last update time per app
+    // Use updatedAt (not createdAt) for "last sync" reporting. createdAt is
+    // intentionally set to the event's real-world startAt for old/initial
+    // imports (so the email digest doesn't resurface historical events); that
+    // makes createdAt useless as a "when did this integration last run" signal.
+    // updatedAt is auto-set by the DB mixin on every insert/update, so it
+    // reflects the actual last time events for this app were touched.
     const appsLastUpdate = await knex
       .select('apps.id as appId', 'apps.name as app', 'apps.key as appKey')
-      .max('events.createdAt as lastUpdate')
+      .max('events.updatedAt as lastUpdate')
       .count('events.id as eventCount')
       .from('apps')
       .leftJoin('events', function () {
@@ -73,24 +78,24 @@ export default class IntegrationsService extends moleculer.Service {
 
     // Get the most recent and earliest event across all apps
     const globalLastUpdate = await knex
-      .select(knex.raw('MAX(created_at) as last_update, MIN(start_at) as first_event'))
+      .select(knex.raw('MAX(updated_at) as last_update, MIN(start_at) as first_event'))
       .from('events')
       .whereNull('deletedAt')
       .first();
 
-    // Get count of events added in the last update batch (events on same date as the latest update per app)
+    // Get count of events touched in the last sync (events on same date as the latest updatedAt per app)
     let lastUpdateCountMap = new Map<number, number>();
     try {
       const lastUpdateCountResult = await knex.raw(`
         WITH last_updates AS (
-          SELECT app_id, MAX(created_at) as last_update_time
+          SELECT app_id, MAX(updated_at) as last_update_time
           FROM events
           WHERE deleted_at IS NULL
           GROUP BY app_id
         )
         SELECT e.app_id as "appId", COUNT(e.id) as count
         FROM events e
-        JOIN last_updates lu ON e.app_id = lu.app_id AND DATE(e.created_at) = DATE(lu.last_update_time)
+        JOIN last_updates lu ON e.app_id = lu.app_id AND DATE(e.updated_at) = DATE(lu.last_update_time)
         WHERE e.deleted_at IS NULL
         GROUP BY e.app_id
       `);
@@ -158,5 +163,13 @@ export default class IntegrationsService extends moleculer.Service {
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
     return result;
+  }
+
+  // Auto-invalidate the 6h cache whenever any integration finishes a sync so
+  // the stats page shows fresh data without users having to wait out the TTL.
+  @Event({ name: 'integrations.sync.finished' })
+  onIntegrationsSyncFinished() {
+    this.cachedStats = null;
+    this.cacheExpiry = 0;
   }
 }

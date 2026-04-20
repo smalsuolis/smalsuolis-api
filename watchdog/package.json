@@ -1,0 +1,26 @@
+{
+  "name": "smalsuolis-watchdog",
+  "version": "1.0.0",
+  "description": "Telegram alerting bot that monitors smalsuolis-api health and integration freshness",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --build tsconfig.json",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.12.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
+  }
+}

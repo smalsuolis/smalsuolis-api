@@ -11,6 +11,23 @@ import {
   UserType,
 } from '../types';
 
+async function withTimeout<T extends { ok: boolean; error?: string }>(
+  p: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    return await Promise.race<T | never>([
+      p,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} check timed out after ${ms}ms`)), ms),
+      ),
+    ]);
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? `${label} check failed` };
+  }
+}
+
 @Service({
   name: 'api',
   mixins: [ApiGateway],
@@ -65,6 +82,7 @@ import {
 
         aliases: {
           'GET /ping': 'api.ping',
+          'GET /health': 'api.health',
         },
 
         // Enable authentication. Implement the logic into `authenticate` method. More info: https://moleculer.services/docs/0.14/moleculer-web.html#Authentication
@@ -116,6 +134,70 @@ export default class ApiService extends moleculer.Service {
     return {
       timestamp: Date.now(),
     };
+  }
+
+  @Action({
+    auth: EndpointType.PUBLIC,
+  })
+  async health(ctx: Context) {
+    const [postgres, redis, auth] = await Promise.all([
+      this.checkPostgres(ctx),
+      this.checkRedis(),
+      this.checkAuthApi(),
+    ]);
+    const services = { postgres, redis, auth };
+    const ok = Object.values(services).every((s) => s.ok);
+    return {
+      ok,
+      timestamp: Date.now(),
+      services,
+    };
+  }
+
+  @Method
+  async checkPostgres(ctx: Context): Promise<{ ok: boolean; error?: string }> {
+    return withTimeout(
+      (async () => {
+        await ctx.call('users.count', {}, { timeout: 2000 });
+        return { ok: true as const };
+      })(),
+      3000,
+      'postgres',
+    );
+  }
+
+  @Method
+  async checkRedis(): Promise<{ ok: boolean; error?: string }> {
+    return withTimeout(
+      (async () => {
+        const client = (this.broker.cacher as any)?.client;
+        if (!client?.ping) return { ok: false, error: 'redis client not initialized' };
+        const pong = await client.ping();
+        return { ok: pong === 'PONG' };
+      })(),
+      2000,
+      'redis',
+    );
+  }
+
+  @Method
+  async checkAuthApi(): Promise<{ ok: boolean; error?: string }> {
+    const host = process.env.AUTH_HOST;
+    if (!host) return { ok: false, error: 'AUTH_HOST not set' };
+    return withTimeout(
+      (async () => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2000);
+        try {
+          const res = await fetch(`${host}/ping`, { signal: ctrl.signal });
+          return { ok: res.ok, ...(res.ok ? {} : { error: `HTTP ${res.status}` }) };
+        } finally {
+          clearTimeout(t);
+        }
+      })(),
+      3000,
+      'auth',
+    );
   }
 
   @Method

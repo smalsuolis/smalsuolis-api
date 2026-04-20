@@ -1,5 +1,24 @@
 'use strict';
 import { BrokerOptions, Errors, MetricRegistry, ServiceBroker } from 'moleculer';
+// Build ioredis options that tolerate Redis being temporarily unreachable.
+// Without these, ioredis throws MaxRetriesPerRequestError once its retry
+// budget is exhausted, and the unhandled rejection kills the whole API
+// process. With them, cache ops fail fast while Redis is down and auto-recover
+// once it's back.
+// Moleculer's Redis cacher does `new Redis(this.opts.redis)` so we must pass
+// connection info + behavior flags together as one options object.
+function buildCacherRedisOptions(): any {
+  const url = new URL(process.env.REDIS_CONNECTION || 'redis://localhost:6379');
+  return {
+    host: url.hostname,
+    port: Number(url.port) || 6379,
+    ...(url.username ? { username: decodeURIComponent(url.username) } : {}),
+    ...(url.password ? { password: decodeURIComponent(url.password) } : {}),
+    ...(url.pathname && url.pathname !== '/' ? { db: Number(url.pathname.slice(1)) } : {}),
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: false,
+  };
+}
 
 /**
  * Moleculer ServiceBroker configuration file
@@ -66,7 +85,7 @@ const brokerConfig: BrokerOptions = {
   cacher: {
     type: 'Redis',
     options: {
-      redis: process.env.REDIS_CONNECTION,
+      redis: buildCacherRedisOptions(),
       prefix: 'smalsuolis',
       ttl: 60 * 60, // 1 hour
     },
@@ -235,14 +254,21 @@ const brokerConfig: BrokerOptions = {
 	 */
 
   async started(broker: ServiceBroker): Promise<void> {
-    try {
-      broker.waitForServices(['seed']).then(async () => {
-        await broker.call('seed.run');
+    broker
+      .waitForServices(['seed'])
+      .then(() => broker.call('seed.run'))
+      .catch((err: any) => {
+        broker.logger.error('seed.run failed (continuing without seed):', err?.message ?? err);
       });
-    } catch (err) {
-      broker.logger.fatal(err);
-    }
   },
 };
+
+// Belt-and-suspenders: don't let a stray unhandled rejection from a cron,
+// integration cache write, or background task kill the whole API. Log loudly
+// so problems are still visible without being fatal.
+process.on('unhandledRejection', (reason: any) => {
+  // eslint-disable-next-line no-console
+  console.error('[unhandledRejection]', reason?.stack ?? reason);
+});
 
 export = brokerConfig;

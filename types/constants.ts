@@ -45,6 +45,7 @@ export const COMMON_FIELDS = {
     type: 'date',
     columnType: 'datetime',
     readonly: true,
+    onCreate: () => new Date(),
     onUpdate: () => new Date(),
   },
 

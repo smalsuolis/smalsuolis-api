@@ -24,6 +24,23 @@ jobs:
           environment: production
           push: true
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push watchdog image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./watchdog
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/smalsuolis/smalsuolis-watchdog:production
+          cache-from: type=gha,scope=watchdog
+          cache-to: type=gha,mode=max,scope=watchdog
+
       - name: Trigger deploy
         uses: AplinkosMinisterija/reusable-workflows/.github/actions/trigger-workflow-and-wait@main
         with:

@@ -87,12 +87,14 @@ export default class SeedService extends moleculer.Service {
         query: { key },
       });
 
-      const appType = data.type;
-      delete data.type; // App don't have this prop
+      // Copy without mutating the module-level APPS constant — a prior
+      // implementation did `delete data.type` which corrupted the constant
+      // so a second run (manual call, hot-reload) built idsMap[undefined].
+      const { type: appType, ...appData } = data;
       if (!app) {
         app = await ctx.call('apps.create', <Partial<App>>{
           key,
-          ...data,
+          ...appData,
         });
       }
 
