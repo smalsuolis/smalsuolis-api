@@ -83,7 +83,13 @@ export default class IntegrationsService extends moleculer.Service {
       .whereNull('deletedAt')
       .first();
 
-    // Get count of events touched in the last sync (events on same date as the latest updatedAt per app)
+    // Count NEW events in the last sync — use created_at, not updated_at.
+    // The integrations mixin calls events.update on every existing record it
+    // sees from the source (even if unchanged), which bumps updated_at for
+    // the whole dataset on every cron run. Counting by updated_at would make
+    // this number equal ~total event count on every sync. created_at only
+    // moves when a new event is actually inserted, so it correctly reports
+    // fresh inserts.
     let lastUpdateCountMap = new Map<number, number>();
     try {
       const lastUpdateCountResult = await knex.raw(`
@@ -95,7 +101,7 @@ export default class IntegrationsService extends moleculer.Service {
         )
         SELECT e.app_id as "appId", COUNT(e.id) as count
         FROM events e
-        JOIN last_updates lu ON e.app_id = lu.app_id AND DATE(e.updated_at) = DATE(lu.last_update_time)
+        JOIN last_updates lu ON e.app_id = lu.app_id AND DATE(e.created_at) = DATE(lu.last_update_time)
         WHERE e.deleted_at IS NULL
         GROUP BY e.app_id
       `);
