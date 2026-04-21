@@ -10,6 +10,18 @@ async function main() {
   startLoops(bot);
 
   await bot.launch();
+  // Register the "/" command menu so users see a clickable list of available
+  // commands in their Telegram client. Fire-and-forget — if Telegram is flaky
+  // or the token's wrong we still want the bot to run and attempt polling.
+  bot.telegram
+    .setMyCommands([
+      { command: 'subscribe', description: 'Start receiving alerts (needs password)' },
+      { command: 'status', description: 'Current API + services health' },
+      { command: 'integrations', description: 'When each integration last synced' },
+      { command: 'unsubscribe', description: 'Stop receiving alerts' },
+    ])
+    .catch((err) => log.warn('setMyCommands failed:', err?.message ?? err));
+
   log.info(
     `running — polling ${config.apiBaseUrl} every ${Math.round(
       config.livenessIntervalMs / 1000,

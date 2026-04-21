@@ -522,11 +522,48 @@ export function startLoops(bot: Telegraf): void {
     }
   };
 
-  livenessTick();
+  // Delay the first liveness poll by the startup grace window so the
+  // watchdog doesn't alert during its own / the API's cold-start when
+  // deploys roll both simultaneously.
+  log.info(
+    `delaying first liveness poll by ${Math.round(
+      config.startupGraceMs / 1000,
+    )}s to absorb deploy warmup`,
+  );
+  setTimeout(() => {
+    livenessTick();
+    setInterval(livenessTick, config.livenessIntervalMs);
+  }, config.startupGraceMs);
+
+  // Staleness runs less often and can't false-trigger on a cold API, so
+  // let it start right away.
   stalenessTick();
-  setInterval(livenessTick, config.livenessIntervalMs);
   setInterval(stalenessTick, config.stalenessIntervalMs);
 }
+
+// --- table helpers --------------------------------------------------------
+
+function formatAgeShort(ageMs: number): string {
+  if (ageMs < 60_000) return 'now';
+  const m = Math.floor(ageMs / 60_000);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+function padCell(value: string, width: number, align: 'l' | 'r' = 'l'): string {
+  if (value.length > width) return value.slice(0, Math.max(0, width - 1)) + '…';
+  return align === 'r' ? value.padStart(width) : value.padEnd(width);
+}
+
+// Wrap lines in a Markdown triple-backtick block so Telegram renders them in
+// a monospace font. Without the fixed-width font column alignment breaks.
+function codeBlock(body: string): string {
+  return '```\n' + body + '\n```';
+}
+
+// --- commands -------------------------------------------------------------
 
 export async function manualIntegrationsStatus(): Promise<string> {
   const now = new Date();
@@ -552,28 +589,64 @@ export async function manualIntegrationsStatus(): Promise<string> {
     return bAge - aAge;
   });
 
-  const lines = apps.map((app) => {
+  // Fixed column widths picked to fit Lithuanian labels on a mobile-sized
+  // Telegram monospace line without wrapping.
+  const WNAME = 22;
+  const WAGE = 5;
+  const WNEW = 5;
+
+  const header =
+    '  ' +
+    padCell('Integration', WNAME) +
+    ' ' +
+    padCell('Age', WAGE, 'r') +
+    '  ' +
+    padCell('+New', WNEW, 'r');
+  const sep = '─'.repeat(header.length);
+
+  const rows = apps.map((app) => {
+    let mark = ' ';
+    let ageLabel: string;
+    let countLabel: string;
+
     if (app.lastRunError) {
-      const when = app.lastRunAt ? formatTimestamp(new Date(app.lastRunAt)) : 'unknown time';
-      return `🚨 ${app.app} — last run failed ${when}\n    \`${app.lastRunError}\``;
+      mark = '🚨';
+      ageLabel = 'ERR';
+      countLabel = '—';
+    } else if (!app.lastUpdate) {
+      ageLabel = '—';
+      countLabel = '0';
+    } else {
+      const ageMs = now.getTime() - new Date(app.lastUpdate).getTime();
+      const isStale = ageMs > threshold;
+      mark = isStale ? '⚠' : ' ';
+      ageLabel = formatAgeShort(ageMs);
+      countLabel = String(app.lastUpdateCount ?? 0);
     }
-    if (!app.lastUpdate) {
-      return `• ${app.app} — never (no data yet)`;
-    }
-    const ageMs = now.getTime() - new Date(app.lastUpdate).getTime();
-    const isStale = ageMs > threshold;
-    const ageLabel = ageMs < 60 * 1000 ? 'just now' : `${formatDuration(ageMs)} ago`;
-    const prefix = isStale ? '⚠️' : '•';
-    const newCount = app.lastUpdateCount ?? 0;
-    return `${prefix} ${app.app} — ${ageLabel} (+${newCount} new)`;
+
+    return (
+      mark +
+      ' ' +
+      padCell(app.app, WNAME) +
+      ' ' +
+      padCell(ageLabel, WAGE, 'r') +
+      '  ' +
+      padCell(countLabel, WNEW, 'r')
+    );
   });
+
+  // If any integration errored, show the full error message below the table
+  // (the table itself only has room for a marker).
+  const errors = apps
+    .filter((a) => a.lastRunError)
+    .map((a) => `🚨 *${a.app}* — \`${a.lastRunError}\``);
 
   return [
     `📊 *Integration freshness*`,
-    `_as of ${formatTimestamp(now)}_`,
-    `_stale threshold: ${formatDuration(threshold)}_`,
+    `_${formatTimestamp(now)} — stale threshold: ${formatDuration(threshold)}_`,
     '',
-    ...lines,
+    codeBlock([header, sep, ...rows].join('\n')),
+    ...(errors.length ? ['', ...errors] : []),
   ].join('\n');
 }
 
@@ -585,11 +658,22 @@ export async function manualStatus(): Promise<string> {
       config.livenessRequestTimeoutMs,
     );
     const header = health.ok ? '✅ *All systems healthy*' : '🚨 *Service(s) down*';
+
+    const WNAME = 10;
+    const rows = servicesFromHealth(health).map((s) => {
+      const svcStatus = health.services[s.key as 'postgres' | 'redis' | 'auth'];
+      const mark = s.ok ? 'UP  ' : 'DOWN';
+      const err = svcStatus?.error ? `  ${svcStatus.error}` : '';
+      return padCell(s.label, WNAME) + '  ' + mark + err;
+    });
+    const tableHeader = padCell('Service', WNAME) + '  ' + 'State';
+    const sep = '─'.repeat(Math.max(tableHeader.length, ...rows.map((r) => r.length)));
+
     return [
       header,
       `_as of ${formatTimestamp(now)}_`,
       '',
-      simpleBreakdown(servicesFromHealth(health)),
+      codeBlock([tableHeader, sep, ...rows].join('\n')),
     ].join('\n');
   } catch (err: any) {
     return [`🚨 *API unreachable*`, `_as of ${formatTimestamp(now)}_`].join('\n');

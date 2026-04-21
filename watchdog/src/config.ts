@@ -33,4 +33,10 @@ export const config = {
   alertCooldownMs: Number(process.env.WATCHDOG_ALERT_COOLDOWN_MS ?? 6 * 60 * 60 * 1000),
   livenessRepeatIntervalMs: Number(process.env.WATCHDOG_LIVENESS_REPEAT_MS ?? 30 * 60 * 1000),
   displayTimezone: process.env.WATCHDOG_TIMEZONE ?? 'Europe/Vilnius',
+  // Skip the first N ms after watchdog startup before beginning health polls.
+  // Prevents false "API unreachable" alerts when the watchdog container comes
+  // up a few seconds before the API container finishes initializing during
+  // a deploy. Default 90s — long enough for most deploys, short enough that a
+  // genuinely dead API still gets detected within the liveness threshold.
+  startupGraceMs: Number(process.env.WATCHDOG_STARTUP_GRACE_MS ?? 90_000),
 };
