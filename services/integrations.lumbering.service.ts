@@ -1,7 +1,7 @@
 'use strict';
 
 import moleculer, { Context } from 'moleculer';
-import { Action, Service } from 'moleculer-decorators';
+import { Action, Method, Service } from 'moleculer-decorators';
 import { App, APP_KEYS } from './apps.service';
 // @ts-ignore
 import Cron from '@r2d2bzh/moleculer-cron';
@@ -58,45 +58,67 @@ export default class IntegrationsLumberingService extends moleculer.Service {
 
     if (!app?.id) return;
 
+    try {
+      return await this.scrape(ctx, app);
+    } catch (err: any) {
+      // Any source/parse/processing error is caught here so the node process
+      // stays alive. recordRunFailure writes the error to the apps table —
+      // the watchdog surfaces it to Telegram within minutes, no 7-day wait.
+      await this.recordRunFailure(ctx, app, err);
+      return this.finishIntegration();
+    }
+  }
+
+  @Method
+  async scrape(ctx: Context<{ limit: number; initial: boolean }>, app: App) {
     const response: any = await ctx.call(
       'http.get',
       {
         url: this.settings.zipUrl,
         opt: { isStream: true },
       },
-      {
-        timeout: 0,
-      },
+      { timeout: 0 },
     );
 
-    const geojson: any = await new Promise(function (resolve) {
-      response.pipe(unzipper.Parse()).pipe(
+    const geojson: any = await new Promise((resolve, reject) => {
+      response.on('error', reject);
+      const unzipStream = response.pipe(unzipper.Parse());
+      unzipStream.on('error', reject);
+      const transformStream = unzipStream.pipe(
         new stream.Transform({
           objectMode: true,
-          transform: async function (entry, _e, cb) {
+          transform(entry, _e, cb) {
             const fileName = entry.path;
             const type = entry.type; // 'Directory' or 'File'
 
             if (type === 'File' && fileName === 'lkmp-data.geojson') {
               const chunks: Buffer[] = [];
-
-              entry.on('data', function (chunk: Buffer) {
-                chunks.push(chunk);
+              entry.on('data', (chunk: Buffer) => chunks.push(chunk));
+              entry.on('end', () => {
+                try {
+                  const jsonString = Buffer.concat(chunks).toString('utf-8');
+                  resolve(JSON.parse(jsonString));
+                } catch (err) {
+                  reject(err);
+                }
               });
-
-              // Send the buffer or you can put it into a var
-              entry.on('end', function () {
-                const jsonString = Buffer.concat(chunks).toString('utf-8');
-                const geojson = JSON.parse(jsonString);
-                resolve(geojson);
-              });
+              entry.on('error', reject);
+            } else {
+              entry.autodrain();
             }
-
             cb();
           },
         }),
       );
+      transformStream.on('error', reject);
+      transformStream.on('finish', () =>
+        reject(new Error("zip did not contain 'lkmp-data.geojson'")),
+      );
     });
+
+    if (!geojson?.features) {
+      throw new Error('empty geojson — no features field');
+    }
 
     const features: any[] = ctx.params.limit
       ? geojson.features.splice(0, ctx.params.limit)
@@ -163,6 +185,7 @@ export default class IntegrationsLumberingService extends moleculer.Service {
 
     await this.cleanupInvalidEvents(ctx, app);
 
+    await this.recordRunSuccess(ctx, app);
     return this.finishIntegration();
   }
 }

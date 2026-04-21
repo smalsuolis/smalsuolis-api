@@ -273,6 +273,62 @@ export function IntegrationsMixin() {
 
         return this.stats;
       },
+      /**
+       * Persist a successful integration run timestamp to every app row
+       * involved, and clear any previously-recorded error. Call at the end
+       * of a successful getData() in each integration service.
+       */
+      async recordRunSuccess(ctx: Context, apps: App[] | App) {
+        const list = Array.isArray(apps) ? apps : [apps];
+        const durationMs = this.stats?.startTime
+          ? Date.now() - new Date(this.stats.startTime).getTime()
+          : null;
+        for (const app of list) {
+          if (!app?.id) continue;
+          try {
+            await ctx.call('apps.update', {
+              id: app.id,
+              lastRunAt: new Date(),
+              lastRunError: null,
+              lastRunDurationMs: durationMs,
+            });
+          } catch (err: any) {
+            this.broker.logger.error(
+              `recordRunSuccess failed for app ${app.id}: ${err?.message ?? err}`,
+            );
+          }
+        }
+      },
+      /**
+       * Persist a failed integration run to every app row involved so the
+       * watchdog (and stats page) can surface the error immediately — no
+       * waiting on staleness. Truncated to avoid huge stacks in the DB.
+       */
+      async recordRunFailure(ctx: Context, apps: App[] | App, error: any) {
+        const list = Array.isArray(apps) ? apps : [apps];
+        const message = (error?.message ?? String(error ?? 'unknown error')).slice(0, 500);
+        const durationMs = this.stats?.startTime
+          ? Date.now() - new Date(this.stats.startTime).getTime()
+          : null;
+        this.broker.logger.error(
+          `${this.name} run failed for ${list.map((a) => a.key).join(', ')}: ${message}`,
+        );
+        for (const app of list) {
+          if (!app?.id) continue;
+          try {
+            await ctx.call('apps.update', {
+              id: app.id,
+              lastRunAt: new Date(),
+              lastRunError: message,
+              lastRunDurationMs: durationMs,
+            });
+          } catch (err: any) {
+            this.broker.logger.error(
+              `recordRunFailure failed for app ${app.id}: ${err?.message ?? err}`,
+            );
+          }
+        }
+      },
       async findOrCreateTags(ctx: Context, names: string[], appKey: string) {
         this.tags = this.tags || {};
 

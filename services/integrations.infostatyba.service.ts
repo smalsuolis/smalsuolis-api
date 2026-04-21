@@ -75,6 +75,32 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     stats.invalid.not_applicable = 0;
 
     const { dokTypes, appByDokType, apps } = await this.getDokTypesData(ctx);
+
+    try {
+      return await this.scrape(ctx, { dokTypes, appByDokType, apps, stats, limit });
+    } catch (err: any) {
+      await this.recordRunFailure(ctx, apps, err);
+      return this.finishIntegration();
+    }
+  }
+
+  @Method
+  async scrape(
+    ctx: Context<{ limit: number; initial: boolean }>,
+    {
+      dokTypes,
+      appByDokType,
+      apps,
+      stats,
+      limit,
+    }: {
+      dokTypes: string[];
+      appByDokType: Record<string, App>;
+      apps: App[];
+      stats: any;
+      limit: number;
+    },
+  ) {
     const dokTipasQuery = dokTypes.map((i) => `dok_tipo_kodas="${i}"`).join('|');
 
     const query = [
@@ -190,6 +216,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
         await this.createOrUpdateEvent(ctx, currentApp, event, !!ctx.params.initial);
 
         if (limit && stats.valid.total >= limit) {
+          await this.recordRunSuccess(ctx, apps);
           return this.finishIntegration();
         }
       }
@@ -199,6 +226,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
 
     await this.cleanupInvalidEvents(ctx, apps);
 
+    await this.recordRunSuccess(ctx, apps);
     return this.finishIntegration();
   }
 

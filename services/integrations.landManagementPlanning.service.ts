@@ -64,51 +64,57 @@ export default class IntegrationsLandManagementPlanningService extends moleculer
 
     if (!app?.id) return;
 
-    const data = await this.scrapeData(this.settings.baseUrl, initial, limit);
-    const uniqueCadastralNumbers = [...new Set(data.flatMap((item) => item.cadastralNumbers))];
-    const geomMap = await this.getGeometryData(uniqueCadastralNumbers);
+    try {
+      const data = await this.scrapeData(this.settings.baseUrl, initial, limit);
+      const uniqueCadastralNumbers = [...new Set(data.flatMap((item) => item.cadastralNumbers))];
+      const geomMap = await this.getGeometryData(uniqueCadastralNumbers);
 
-    const dataWithGeom: LandManagementPlanning[] = data.reduce(
-      (acc: LandManagementPlanning[], item) => {
-        const geometries = item.cadastralNumbers
-          .map((cadastralNumber: string) => geomMap.get(cadastralNumber))
-          .filter((data: Feature) => data && data.geometry);
+      const dataWithGeom: LandManagementPlanning[] = data.reduce(
+        (acc: LandManagementPlanning[], item) => {
+          const geometries = item.cadastralNumbers
+            .map((cadastralNumber: string) => geomMap.get(cadastralNumber))
+            .filter((data: Feature) => data && data.geometry);
 
-        if (geometries.length === 0) return acc;
+          if (geometries.length === 0) return acc;
 
-        const combinedGeometry =
-          geometries.length > 1
-            ? turf.union(turf.featureCollection([...geometries]))
-            : geometries[0];
+          const combinedGeometry =
+            geometries.length > 1
+              ? turf.union(turf.featureCollection([...geometries]))
+              : geometries[0];
 
-        combinedGeometry.geometry.crs = 'EPSG:4326';
+          combinedGeometry.geometry.crs = 'EPSG:4326';
 
-        acc.push({ ...item, geom: combinedGeometry });
-        return acc;
-      },
-      [],
-    );
+          acc.push({ ...item, geom: combinedGeometry });
+          return acc;
+        },
+        [],
+      );
 
-    const events = dataWithGeom.map((entry) => {
-      const bodyJSON = [
-        { title: 'Būsena', value: entry?.status || '-' },
-        { title: 'Paslaugos numeris', value: entry?.serviceNo || '-' },
-      ];
+      const events = dataWithGeom.map((entry) => {
+        const bodyJSON = [
+          { title: 'Būsena', value: entry?.status || '-' },
+          { title: 'Paslaugos numeris', value: entry?.serviceNo || '-' },
+        ];
 
-      return {
-        name: entry.name,
-        body: toEventBodyMarkdown(bodyJSON),
-        startAt: new Date(entry.startAt),
-        geom: entry.geom,
-        app: app.id,
-        isFullDay: true,
-        externalId: entry.externalId,
-      };
-    });
+        return {
+          name: entry.name,
+          body: toEventBodyMarkdown(bodyJSON),
+          startAt: new Date(entry.startAt),
+          geom: entry.geom,
+          app: app.id,
+          isFullDay: true,
+          externalId: entry.externalId,
+        };
+      });
 
-    await this.createOrUpdateEvents(ctx, app, events, initial);
+      await this.createOrUpdateEvents(ctx, app, events, initial);
 
-    return this.finishIntegration();
+      await this.recordRunSuccess(ctx, app);
+      return this.finishIntegration();
+    } catch (err: any) {
+      await this.recordRunFailure(ctx, app, err);
+      return this.finishIntegration();
+    }
   }
 
   @Method

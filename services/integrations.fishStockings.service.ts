@@ -1,7 +1,7 @@
 'use strict';
 
 import moleculer, { Context } from 'moleculer';
-import { Action, Service } from 'moleculer-decorators';
+import { Action, Method, Service } from 'moleculer-decorators';
 import { Event, toEventBodyMarkdown } from './events.service';
 import { APP_KEYS, App } from './apps.service';
 import transformation from 'transform-coordinates';
@@ -96,6 +96,16 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
 
     if (!app?.id) return;
 
+    try {
+      return await this.scrape(ctx, app);
+    } catch (err: any) {
+      await this.recordRunFailure(ctx, app, err);
+      return this.finishIntegration();
+    }
+  }
+
+  @Method
+  async scrape(ctx: Context<{ limit: number; initial: boolean }>, app: App) {
     const url =
       this.settings.baseUrl +
       '/api/public/fishStockings?' +
@@ -175,6 +185,7 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
 
     await this.cleanupInvalidEvents(ctx, app);
 
+    await this.recordRunSuccess(ctx, app);
     return this.finishIntegration();
   }
 }

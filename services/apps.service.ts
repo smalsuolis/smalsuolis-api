@@ -38,6 +38,9 @@ export interface App extends CommonFields {
   apiKey: string;
   description: string;
   icon: string;
+  lastRunAt?: Date | null;
+  lastRunError?: string | null;
+  lastRunDurationMs?: number | null;
 }
 
 @Service({
@@ -63,6 +66,20 @@ export interface App extends CommonFields {
       name: 'string|required',
       description: 'string|required',
       icon: 'string|required',
+      lastRunAt: {
+        type: 'date',
+        columnType: 'datetime',
+        hidden: 'byDefault',
+      },
+      lastRunError: {
+        type: 'string',
+        hidden: 'byDefault',
+      },
+      lastRunDurationMs: {
+        type: 'number',
+        columnType: 'integer',
+        hidden: 'byDefault',
+      },
     },
     scopes: {
       ...COMMON_SCOPES,

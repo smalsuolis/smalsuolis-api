@@ -36,6 +36,8 @@ interface AppLastUpdate {
   lastUpdate: string | null;
   eventCount: number;
   lastUpdateCount: number;
+  lastRunAt: string | null;
+  lastRunError: string | null;
 }
 
 interface LastUpdateResponse {
@@ -375,6 +377,68 @@ export async function runStalenessCheck(bot: Telegraf): Promise<void> {
   }
 
   const now = new Date();
+  await checkIntegrationFailures(bot, data, now);
+  await checkStaleness(bot, data, now);
+}
+
+async function checkIntegrationFailures(
+  bot: Telegraf,
+  data: LastUpdateResponse,
+  now: Date,
+): Promise<void> {
+  const failing = (data.apps ?? []).filter((a) => a.lastRunError);
+
+  if (failing.length === 0) {
+    const hadPrev = !!getKv('integration_failures:set');
+    if (!hadPrev) return;
+    const delivered = await broadcast(
+      bot,
+      [`✅ *All integrations running again*`, `_${formatTimestamp(now)}_`].join('\n'),
+    );
+    if (delivered) {
+      clearAlert('integration_failures');
+      deleteKv('integration_failures:set');
+    }
+    return;
+  }
+
+  // Dedup on (appKey, errorMessage) — if the error text changes on any app,
+  // treat as a new signal and re-alert. Pure-time cooldown alone would hide
+  // follow-up / different errors on the same app.
+  const currentHash = failing
+    .map((a) => `${a.appKey}::${a.lastRunError}`)
+    .sort()
+    .join('|');
+  const previousHash = getKv('integration_failures:set');
+  const lastSent = getAlertLastSent('integration_failures');
+  const cooldownPassed = !lastSent || Date.now() - lastSent.getTime() >= config.alertCooldownMs;
+
+  if (currentHash === previousHash && !cooldownPassed) return;
+
+  const lines = failing.map((a) => {
+    const when = a.lastRunAt ? formatTimestamp(new Date(a.lastRunAt)) : 'unknown time';
+    return [`🚨 *${a.app}* _(${a.appKey})_`, `failed at ${when}`, `\`${a.lastRunError}\``].join(
+      '\n',
+    );
+  });
+
+  const msg = [
+    `🚨 *Integration failures (${failing.length})*`,
+    `_${formatTimestamp(now)}_`,
+    '',
+    ...lines.flatMap((l) => [l, '']),
+  ]
+    .join('\n')
+    .trimEnd();
+
+  const delivered = await broadcast(bot, msg);
+  if (delivered) {
+    markAlertSent('integration_failures');
+    setKv('integration_failures:set', currentHash);
+  }
+}
+
+async function checkStaleness(bot: Telegraf, data: LastUpdateResponse, now: Date): Promise<void> {
   const threshold = config.stalenessThresholdMs;
 
   // Skip apps that have never received data — that's a fresh-DB / setup state,
@@ -489,14 +553,19 @@ export async function manualIntegrationsStatus(): Promise<string> {
   });
 
   const lines = apps.map((app) => {
+    if (app.lastRunError) {
+      const when = app.lastRunAt ? formatTimestamp(new Date(app.lastRunAt)) : 'unknown time';
+      return `🚨 ${app.app} — last run failed ${when}\n    \`${app.lastRunError}\``;
+    }
     if (!app.lastUpdate) {
-      return `• ${app.app} — never (${app.eventCount} events)`;
+      return `• ${app.app} — never (no data yet)`;
     }
     const ageMs = now.getTime() - new Date(app.lastUpdate).getTime();
     const isStale = ageMs > threshold;
     const ageLabel = ageMs < 60 * 1000 ? 'just now' : `${formatDuration(ageMs)} ago`;
     const prefix = isStale ? '⚠️' : '•';
-    return `${prefix} ${app.app} — ${ageLabel} (${app.eventCount} events)`;
+    const newCount = app.lastUpdateCount ?? 0;
+    return `${prefix} ${app.app} — ${ageLabel} (+${newCount} new)`;
   });
 
   return [

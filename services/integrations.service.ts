@@ -14,6 +14,8 @@ interface LastUpdateInfo {
   lastUpdate: Date | null;
   eventCount: number;
   lastUpdateCount: number;
+  lastRunAt: Date | null;
+  lastRunError: string | null;
 }
 
 interface AppTypeStats {
@@ -66,14 +68,20 @@ export default class IntegrationsService extends moleculer.Service {
     // updatedAt is auto-set by the DB mixin on every insert/update, so it
     // reflects the actual last time events for this app were touched.
     const appsLastUpdate = await knex
-      .select('apps.id as appId', 'apps.name as app', 'apps.key as appKey')
+      .select(
+        'apps.id as appId',
+        'apps.name as app',
+        'apps.key as appKey',
+        'apps.last_run_at as lastRunAt',
+        'apps.last_run_error as lastRunError',
+      )
       .max('events.updatedAt as lastUpdate')
       .count('events.id as eventCount')
       .from('apps')
       .leftJoin('events', function () {
         this.on('events.appId', '=', 'apps.id').andOn(knex.raw('events.deleted_at IS NULL'));
       })
-      .groupBy('apps.id', 'apps.name', 'apps.key')
+      .groupBy('apps.id', 'apps.name', 'apps.key', 'apps.last_run_at', 'apps.last_run_error')
       .orderBy('lastUpdate', 'desc');
 
     // Get the most recent and earliest event across all apps
@@ -121,6 +129,8 @@ export default class IntegrationsService extends moleculer.Service {
       lastUpdate: row.lastUpdate ? new Date(row.lastUpdate) : null,
       eventCount: parseInt(row.eventCount, 10),
       lastUpdateCount: lastUpdateCountMap.get(row.appId) || 0,
+      lastRunAt: row.lastRunAt ? new Date(row.lastRunAt) : null,
+      lastRunError: row.lastRunError ?? null,
     }));
 
     // Group by app type and calculate stats
