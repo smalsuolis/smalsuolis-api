@@ -590,13 +590,15 @@ export async function manualIntegrationsStatus(): Promise<string> {
   });
 
   // Fixed column widths picked to fit Lithuanian labels on a mobile-sized
-  // Telegram monospace line without wrapping.
+  // Telegram monospace line without wrapping. Status glyphs live at the end
+  // of each row — dropping them into a leading column throws off the
+  // following column alignment because warning/emoji glyphs don't render as
+  // exactly one monospace cell in Telegram.
   const WNAME = 22;
   const WAGE = 5;
   const WNEW = 5;
 
   const header =
-    '  ' +
     padCell('Integration', WNAME) +
     ' ' +
     padCell('Age', WAGE, 'r') +
@@ -605,12 +607,12 @@ export async function manualIntegrationsStatus(): Promise<string> {
   const sep = '─'.repeat(header.length);
 
   const rows = apps.map((app) => {
-    let mark = ' ';
+    let trailing = '';
     let ageLabel: string;
     let countLabel: string;
 
     if (app.lastRunError) {
-      mark = '🚨';
+      trailing = '  🚨';
       ageLabel = 'ERR';
       countLabel = '—';
     } else if (!app.lastUpdate) {
@@ -619,19 +621,18 @@ export async function manualIntegrationsStatus(): Promise<string> {
     } else {
       const ageMs = now.getTime() - new Date(app.lastUpdate).getTime();
       const isStale = ageMs > threshold;
-      mark = isStale ? '⚠' : ' ';
+      trailing = isStale ? '  ⚠️' : '';
       ageLabel = formatAgeShort(ageMs);
       countLabel = String(app.lastUpdateCount ?? 0);
     }
 
     return (
-      mark +
-      ' ' +
       padCell(app.app, WNAME) +
       ' ' +
       padCell(ageLabel, WAGE, 'r') +
       '  ' +
-      padCell(countLabel, WNEW, 'r')
+      padCell(countLabel, WNEW, 'r') +
+      trailing
     );
   });
 
