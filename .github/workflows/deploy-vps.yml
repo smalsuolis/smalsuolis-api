@@ -83,11 +83,15 @@ jobs:
           REDIS_CONNECTION: ${{ startsWith(github.ref, 'refs/tags/') && secrets.VPS_PROD_REDIS_CONNECTION || secrets.VPS_STAGING_REDIS_CONNECTION }}
           CHROME_WS_ENDPOINT: ${{ startsWith(github.ref, 'refs/tags/') && secrets.VPS_PROD_CHROME_WS_ENDPOINT || secrets.VPS_STAGING_CHROME_WS_ENDPOINT }}
           AUTH_GROUP_ID: ${{ secrets.AUTH_GROUP_ID }}
+          LUMBERING_JUMP_URL: ${{ secrets.LUMBERING_JUMP_URL }}
+          LT_JUMP_CA_B64: ${{ secrets.LT_JUMP_CA_B64 }}
+          LT_JUMP_CLIENT_CERT_B64: ${{ secrets.LT_JUMP_CLIENT_CERT_B64 }}
+          LT_JUMP_CLIENT_KEY_B64: ${{ secrets.LT_JUMP_CLIENT_KEY_B64 }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: CONTAINER_SUFFIX,IMAGE_TAG,APP_HOST,DB_CONNECTION,AUTH_HOST,AUTH_API_KEY,JWT_SECRET,POSTMARK_KEY,SENTRY_DSN,REDIS_CONNECTION,CHROME_WS_ENDPOINT,AUTH_GROUP_ID
+          envs: CONTAINER_SUFFIX,IMAGE_TAG,APP_HOST,DB_CONNECTION,AUTH_HOST,AUTH_API_KEY,JWT_SECRET,POSTMARK_KEY,SENTRY_DSN,REDIS_CONNECTION,CHROME_WS_ENDPOINT,AUTH_GROUP_ID,LUMBERING_JUMP_URL,LT_JUMP_CA_B64,LT_JUMP_CLIENT_CERT_B64,LT_JUMP_CLIENT_KEY_B64
           script: |
             # Ensure the shared proxy network exists
             docker network create web_proxy || true
@@ -203,6 +207,10 @@ jobs:
               -e SENTRY_DSN=${SENTRY_DSN} \
               -e ENVIRONMENT=${{ steps.env.outputs.environment }} \
               -e VERSION=${{ github.sha }} \
+              -e LUMBERING_JUMP_URL=${LUMBERING_JUMP_URL} \
+              -e LUMBERING_JUMP_CA_B64=${LUMBERING_JUMP_CA_B64} \
+              -e LUMBERING_JUMP_CLIENT_CERT_B64=${LUMBERING_JUMP_CLIENT_CERT_B64} \
+              -e LUMBERING_JUMP_CLIENT_KEY_B64=${LUMBERING_JUMP_CLIENT_KEY_B64} \
               ghcr.io/${{ github.repository }}:${IMAGE_TAG}
             
             # Connect API to web_proxy network for Caddy access
