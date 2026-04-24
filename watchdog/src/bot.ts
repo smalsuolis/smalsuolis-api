@@ -10,9 +10,8 @@ import { log } from './logger';
 // command handler via bot.hears().
 const BTN_STATUS = '📊 Status';
 const BTN_INTEGRATIONS = '📅 Integrations';
-const BTN_UNSUBSCRIBE = '🔕 Unsubscribe';
 
-const menu = Markup.keyboard([[BTN_STATUS, BTN_INTEGRATIONS], [BTN_UNSUBSCRIBE]])
+const menu = Markup.keyboard([[BTN_STATUS, BTN_INTEGRATIONS]])
   .resize()
   .persistent();
 
@@ -70,7 +69,6 @@ export function createBot(): Telegraf {
   // Tap-button handlers (for users who tap the persistent keyboard).
   bot.hears(BTN_STATUS, handleStatus);
   bot.hears(BTN_INTEGRATIONS, handleIntegrations);
-  bot.hears(BTN_UNSUBSCRIBE, handleUnsubscribe);
 
   bot.catch((err, ctx) => {
     log.error(`bot error in update ${ctx.update?.update_id}:`, err);
