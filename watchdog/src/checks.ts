@@ -386,7 +386,19 @@ async function checkIntegrationFailures(
   data: LastUpdateResponse,
   now: Date,
 ): Promise<void> {
-  const failing = (data.apps ?? []).filter((a) => a.lastRunError);
+  // Bookkeeping can go stale: if apps.update times out inside
+  // recordRunFailure/Success (same Moleculer layer that's flaking), the apps
+  // row keeps yesterday's error even though today's cron ran. Detect that by
+  // comparing when events were last touched to when the outcome was last
+  // recorded — if events are fresher, the cron ran again and did work, so
+  // treat the old error as resolved.
+  const failing = (data.apps ?? []).filter((a) => {
+    if (!a.lastRunError) return false;
+    if (a.lastUpdate && a.lastRunAt && new Date(a.lastUpdate) > new Date(a.lastRunAt)) {
+      return false;
+    }
+    return true;
+  });
 
   if (failing.length === 0) {
     const hadPrev = !!getKv('integration_failures:set');
