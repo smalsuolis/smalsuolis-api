@@ -395,10 +395,20 @@ export default class SubscriptionsService extends moleculer.Service {
       query: { id: { $in: ctx.params.ids } },
       fields: ['id'],
     });
-    await Promise.all(
-      owned.map((s) => this.updateEntity(ctx, { id: s.id, active: ctx.params.active })),
-    );
-    return { updated: owned.length };
+    const ownedIds = owned.map((s) => s.id);
+    if (!ownedIds.length) return { updated: 0 };
+
+    // Bypass moleculer-db so the eventsCount field setter doesn't nullify
+    // the cached count, and the subscriptions.* event doesn't trigger a
+    // pointless recalc — `active` doesn't affect counts.
+    const adapter = await this.getAdapter(ctx);
+    await adapter.client('subscriptions').whereIn('id', ownedIds).update({
+      active: ctx.params.active,
+      updatedAt: new Date(),
+      updatedBy: ctx.meta.user.id,
+    });
+
+    return { updated: ownedIds.length };
   }
 
   @Action({
@@ -438,22 +448,13 @@ export default class SubscriptionsService extends moleculer.Service {
 
   @Event()
   async 'subscriptions.*'(ctx: Context<EntityChangedParams<Subscription>>) {
-    const { type, data, oldData } = ctx.params;
-    const id = data.id;
+    const type = ctx.params.type;
+    const subscription = ctx.params.data;
+    const id = subscription.id;
 
     if (!id) return;
 
-    if (data.eventsCount) return;
-
-    // eventsCount only depends on these fields — skip recalc on changes
-    // to name/active/etc. so the UI doesn't flicker the count to null.
-    if ((type === 'update' || type === 'replace') && oldData) {
-      const recalcKeys: Array<keyof Subscription> = ['geom', 'apps', 'frequency', 'textFilter'];
-      const changed = recalcKeys.some(
-        (k) => JSON.stringify((data as any)[k]) !== JSON.stringify((oldData as any)[k]),
-      );
-      if (!changed) return;
-    }
+    if (subscription.eventsCount) return;
 
     switch (type) {
       case 'create':
