@@ -382,6 +382,41 @@ export default class SubscriptionsService extends moleculer.Service {
     return countBySubscriptions;
   }
 
+  @Action({
+    rest: 'POST /setActive',
+    auth: EndpointType.USER,
+    params: {
+      ids: { type: 'array', items: 'number|convert', min: 1 },
+      active: 'boolean|convert',
+    },
+  })
+  async setActive(ctx: Context<{ ids: number[]; active: boolean }, UserAuthMeta>) {
+    const owned: Array<Subscription<null, 'id'>> = await this.findEntities(ctx, {
+      query: { id: { $in: ctx.params.ids } },
+      fields: ['id'],
+    });
+    await Promise.all(
+      owned.map((s) => this.updateEntity(ctx, { id: s.id, active: ctx.params.active })),
+    );
+    return { updated: owned.length };
+  }
+
+  @Action({
+    rest: 'POST /removeMany',
+    auth: EndpointType.USER,
+    params: {
+      ids: { type: 'array', items: 'number|convert', min: 1 },
+    },
+  })
+  async removeMany(ctx: Context<{ ids: number[] }, UserAuthMeta>) {
+    const owned: Array<Subscription<null, 'id'>> = await this.findEntities(ctx, {
+      query: { id: { $in: ctx.params.ids } },
+      fields: ['id'],
+    });
+    await Promise.all(owned.map((s) => this.removeEntity(ctx, { id: s.id })));
+    return { removed: owned.length };
+  }
+
   @Method
   cacheEventsCount(ctx: Context, id: Subscription['id'], eventsCount: Subscription['eventsCount']) {
     return this.updateEntity(
