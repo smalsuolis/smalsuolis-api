@@ -151,7 +151,7 @@ export type Subscription<
         type: 'enum',
         values: Object.values(Frequency),
       },
-      active: 'boolean', // is subscription active
+      active: { type: 'boolean', default: true }, // is subscription active
       textFilter: 'string',
       ...COMMON_FIELDS,
     },
