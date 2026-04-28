@@ -438,13 +438,22 @@ export default class SubscriptionsService extends moleculer.Service {
 
   @Event()
   async 'subscriptions.*'(ctx: Context<EntityChangedParams<Subscription>>) {
-    const type = ctx.params.type;
-    const subscription = ctx.params.data;
-    const id = subscription.id;
+    const { type, data, oldData } = ctx.params;
+    const id = data.id;
 
     if (!id) return;
 
-    if (subscription.eventsCount) return;
+    if (data.eventsCount) return;
+
+    // eventsCount only depends on these fields — skip recalc on changes
+    // to name/active/etc. so the UI doesn't flicker the count to null.
+    if ((type === 'update' || type === 'replace') && oldData) {
+      const recalcKeys: Array<keyof Subscription> = ['geom', 'apps', 'frequency', 'textFilter'];
+      const changed = recalcKeys.some(
+        (k) => JSON.stringify((data as any)[k]) !== JSON.stringify((oldData as any)[k]),
+      );
+      if (!changed) return;
+    }
 
     switch (type) {
       case 'create':
