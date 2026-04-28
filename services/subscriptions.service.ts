@@ -408,6 +408,10 @@ export default class SubscriptionsService extends moleculer.Service {
       updatedBy: ctx.meta.user.id,
     });
 
+    // Skipping events also skipped auth's cache invalidation (auth.me caches
+    // active-sub count, used to pick landing page). Trigger it explicitly.
+    this.broker.broadcast('cache.clean.auth');
+
     return { updated: ownedIds.length };
   }
 
