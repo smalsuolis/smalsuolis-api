@@ -3,7 +3,37 @@ import { Context } from 'moleculer';
 import { App, APP_TYPE } from '../services/apps.service';
 import { Event } from '../services/events.service';
 import { Tag } from '../services/tags.service';
+import { Category } from '../services/categories.service';
 import { DBPagination } from '../types';
+import { classify } from '../utils/classifiers';
+
+// Cached at module level so all integration services share the same lookup —
+// categories are seed-only (rest:null) so this never needs invalidation.
+const categoryIdByAppType = new Map<string, Map<string, number>>();
+
+async function loadCategoryIdMap(ctx: Context, appType: string): Promise<Map<string, number>> {
+  let map = categoryIdByAppType.get(appType);
+  if (map) return map;
+  const rows: Category[] = await ctx.call('categories.find', {
+    query: { appType },
+    fields: ['id', 'code'],
+    scope: false,
+  });
+  map = new Map(rows.map((r) => [r.code, r.id]));
+  categoryIdByAppType.set(appType, map);
+  return map;
+}
+
+async function stampCategory(ctx: Context, app: App, event: Partial<Event>) {
+  if (event.category) return; // caller pre-set it; respect that
+  const appType = APP_TYPE[app.key];
+  if (!appType) return;
+  const code = classify(appType, { name: event.name, body: event.body });
+  if (!code) return; // no classifier registered for this appType
+  const idMap = await loadCategoryIdMap(ctx, appType);
+  const id = idMap.get(code);
+  if (id) event.category = id;
+}
 
 export type IntegrationStats = {
   total: number;
@@ -92,6 +122,8 @@ export function IntegrationsMixin() {
           return;
         }
 
+        await stampCategory(ctx, app, event);
+
         const existingEvent: Event = await ctx.call('events.findOne', {
           query: {
             externalId: event.externalId,
@@ -156,6 +188,11 @@ export function IntegrationsMixin() {
             this.addInvalid();
             continue;
           }
+
+          // Resolved one event at a time; the loadCategoryIdMap call inside
+          // is cached after first hit per appType so this stays cheap.
+          const eventApp = apps.find((a) => a.id === event.app) ?? apps[0];
+          await stampCategory(ctx, eventApp, event);
 
           // Let's save old events (older than 30 days) as initial events
           initial = initial || differenceInDays(new Date(), event.startAt) > 30;

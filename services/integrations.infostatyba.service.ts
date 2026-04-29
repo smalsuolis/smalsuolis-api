@@ -12,6 +12,12 @@ import { IntegrationsMixin, IntegrationStats } from '../mixins/integrations.mixi
 import { wktToGeoJSON } from 'betterknown';
 import { addressesSearch } from '../utils/boundaries';
 import _ from 'lodash';
+import { registerClassifier } from '../utils/classifiers';
+import { INFOSTATYBA_SPEC } from '../utils/classifiers/infostatyba';
+
+// Register on module load so the spec is available before any service action
+// runs. validateSpec() throws here if the spec is malformed — fail fast at boot.
+registerClassifier(INFOSTATYBA_SPEC);
 
 const addressCacheKey = 'integrations:infostatyba:addresses';
 @Service({

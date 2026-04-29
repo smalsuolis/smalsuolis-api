@@ -3,6 +3,8 @@
 import moleculer, { Context } from 'moleculer';
 import { Action, Method, Service } from 'moleculer-decorators';
 import { App, APP_KEYS, APP_TYPE } from './apps.service';
+import { Category } from './categories.service';
+import { getRegisteredSpecs } from '../utils/classifiers';
 
 const APPS = {
   [APP_KEYS.infostatybaNaujas]: {
@@ -70,6 +72,8 @@ export default class SeedService extends moleculer.Service {
 
     const apps: Record<string, App['id'][]> = await this.seedApps(ctx);
 
+    await this.seedCategories(ctx);
+
     await this.landManagementPlanning(ctx, apps.zemetvarkosPlanavimas);
     await this.infostatyba(ctx, apps.infostatyba);
     await this.fishStockings(ctx, apps.izuvinimas);
@@ -103,6 +107,46 @@ export default class SeedService extends moleculer.Service {
     }
 
     return idsMap;
+  }
+
+  // Categories are seeded from the in-code classifier registry. Each
+  // registered spec contributes its own subtree (scoped by appType). Idempotent:
+  // re-runs only insert codes that don't already exist for the given appType.
+  // Skipped per-spec if the registering integration's services aren't loaded.
+  @Method
+  async seedCategories(ctx: Context) {
+    await this.broker.waitForServices(['categories']);
+
+    for (const spec of getRegisteredSpecs()) {
+      const existing: Category[] = await ctx.call('categories.find', {
+        query: { appType: spec.appType },
+      });
+      const idByCode = new Map(existing.map((c) => [c.code, c.id]));
+
+      // Categories may reference parents by code; iterate in spec order so
+      // every parent is inserted before its children. Validation in
+      // registerClassifier already guarantees parent codes exist.
+      for (const node of spec.categories) {
+        if (idByCode.has(node.code)) continue;
+
+        const parentId = node.parent === null ? null : idByCode.get(node.parent) ?? null;
+        if (node.parent !== null && parentId === null) {
+          throw new Error(
+            `seedCategories: ${spec.appType}/${node.code} parent ${node.parent} not seeded yet — check spec ordering`,
+          );
+        }
+
+        const created: Category = await ctx.call('categories.create', {
+          code: node.code,
+          name: node.name,
+          parent: parentId,
+          appType: spec.appType,
+          sort: node.sort,
+          hidden: node.hidden ?? false,
+        });
+        idByCode.set(node.code, created.id);
+      }
+    }
   }
 
   @Method

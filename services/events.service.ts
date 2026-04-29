@@ -19,6 +19,7 @@ import { App, APP_TYPE } from './apps.service';
 import { LKS_SRID, parseToJsonIfNeeded } from '../utils';
 import { Subscription } from './subscriptions.service';
 import { Tag } from './tags.service';
+import { Category } from './categories.service';
 import { Knex } from 'knex';
 import _ from 'lodash';
 
@@ -35,6 +36,7 @@ interface Fields extends CommonFields {
   externalId: string;
   tags: number[];
   tagsData: { id: Tag['id']; name: string; value: number }[];
+  category?: number | null;
 }
 
 export type EventBodyJSON = {
@@ -49,6 +51,7 @@ export function toEventBodyMarkdown(data: EventBodyJSON[]) {
 interface Populates extends CommonPopulates {
   app: App;
   tags: Tag[];
+  category: Category;
 }
 
 export type Event<
@@ -151,6 +154,12 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
             value: 'number',
           },
         },
+      },
+      category: {
+        type: 'number',
+        columnType: 'integer',
+        columnName: 'categoryId',
+        populate: 'categories.resolve',
       },
       ...COMMON_FIELDS,
     },

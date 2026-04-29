@@ -9,6 +9,7 @@
     "dev": "yarn run db:migrate && ts-node ./node_modules/moleculer/bin/moleculer-runner.js --env --hot --repl --config moleculer.config.ts services/**/*.service.ts",
     "start": "yarn run db:migrate --knexfile ./dist/knexfile.js && moleculer-runner --config dist/moleculer.config.js",
     "cli": "moleculer connect NATS",
+    "test": "node --require ts-node/register --test test/**/*.test.ts",
     "lint": "eslint --ext .js,.ts .",
     "lint:sarif": "set SARIF_ESLINT_EMBED=true && yarn run lint --format @microsoft/eslint-formatter-sarif --output-file eslint-results.sarif",
     "dc:up": "docker-compose -p smalsuolis-api up --build -d",
