@@ -68,12 +68,6 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
   const subscriptionQuery = subscriptions.map((subscription) => {
     const condition: any = {
       ...(!!subscription.apps?.length && { app: { $in: subscription.apps } }),
-      // `categories` here is expected to already be expanded to leaf ids by
-      // the caller (see events.applyFilters). User picks any-level codes;
-      // expansion happens via categories.descendants and is cached in-memory.
-      ...(!!subscription.categories?.length && {
-        category: { $in: subscription.categories },
-      }),
       $raw: intersectsQuery('geom', subscription.geomWithBuffer, LKS_SRID),
     };
 
@@ -81,6 +75,25 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
       const escaped = subscription.textFilter.replace(/'/g, "''");
       const textCondition = `(name ILIKE '%${escaped}%' OR body ILIKE '%${escaped}%')`;
       condition.$raw = condition.$raw ? `(${condition.$raw}) AND ${textCondition}` : textCondition;
+    }
+
+    // Categories only exist for infostatyba events; other apps' events have
+    // category_id = NULL. Apply the filter PERMISSIVELY: events without a
+    // category pass through, and categorized events must match. So a sub with
+    // apps=[infostatyba, miškai] and categories=[gyvenamieji] keeps all miškai
+    // events flowing while narrowing the infostatyba subset.
+    // `categories` here is expected to already be expanded to leaf ids by the
+    // caller (see events.applyFilters) — user picks any-level codes,
+    // expansion happens via categories.descendants and is cached in-memory.
+    if (subscription.categories?.length) {
+      const ids = subscription.categories
+        .map((id) => Number(id))
+        .filter(Number.isFinite)
+        .join(',');
+      if (ids) {
+        const catCondition = `(category_id IS NULL OR category_id IN (${ids}))`;
+        condition.$raw = condition.$raw ? `(${condition.$raw}) AND ${catCondition}` : catCondition;
+      }
     }
 
     return condition;
