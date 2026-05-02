@@ -23,12 +23,14 @@ import {
 } from '../types';
 import { LKS_SRID } from '../utils';
 import { App } from './apps.service';
+import { Category } from './categories.service';
 import { User } from './users.service';
 
 interface Fields extends CommonFields {
   name: string;
   user: User['id'];
   apps: number[];
+  categories: number[];
   geom: FeatureCollection;
   frequency: Frequency;
   active: boolean;
@@ -42,6 +44,7 @@ interface Fields extends CommonFields {
 
 interface Populates extends CommonPopulates {
   apps: App[];
+  categories: Category[];
   user: User;
 }
 
@@ -103,6 +106,28 @@ export type Subscription<
               if (!item.apps) return [];
               if (typeof item.apps === 'string') item.apps = JSON.parse(item.apps);
               return ctx.call('apps.resolve', { id: item.apps });
+            }),
+          );
+        },
+      },
+      // User-selected category ids — can be at any level of the hierarchy.
+      // Subtree expansion happens at query time (see events.applyFilters),
+      // so picking 'pastatai' transparently matches all leaves under it.
+      // Empty/missing array = no category restriction (matches everything).
+      categories: {
+        type: 'array',
+        items: { type: 'number' },
+        columnName: 'categories',
+        default: [],
+        validate: 'validateCategories',
+        populate(ctx: any, _values: any, items: Subscription[]) {
+          return Promise.all(
+            items.map((item: Subscription) => {
+              if (!item.categories) return [];
+              if (typeof item.categories === 'string')
+                item.categories = JSON.parse(item.categories);
+              if (!item.categories.length) return [];
+              return ctx.call('categories.resolve', { id: item.categories });
             }),
           );
         },
@@ -262,6 +287,11 @@ export default class SubscriptionsService extends moleculer.Service {
     return result;
   }
 
+  // Known limitation: this count does NOT respect the subscription's
+  // `categories` filter — would require a recursive CTE per sub to expand
+  // category subtrees inside the join. Listing (events.list?subscription=)
+  // does honor categories. So a sub with a category filter set will see a
+  // slightly inflated count badge vs actual list length. Fix when needed.
   @Action({
     rest: 'GET /:id/events/count',
     params: {
@@ -499,6 +529,20 @@ export default class SubscriptionsService extends moleculer.Service {
     const diff = value.filter((id: number) => !ids.includes(id));
     if (apps.length !== value.length) {
       return `Invalid app ids [${diff.toString()}]`;
+    }
+    return true;
+  }
+
+  @Method
+  async validateCategories({ ctx, value }: FieldHookCallback) {
+    if (!value?.length) return true;
+    const cats: Category[] = await ctx.call('categories.find', {
+      query: { id: { $in: value } },
+    });
+    const ids = cats.map((c) => c.id);
+    const diff = value.filter((id: number) => !ids.includes(id));
+    if (cats.length !== value.length) {
+      return `Invalid category ids [${diff.toString()}]`;
     }
     return true;
   }

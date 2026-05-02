@@ -89,6 +89,63 @@ export type Category<
 })
 export default class CategoriesService extends moleculer.Service {
   private backfillRunning = false;
+  private descendantIndex: Map<number, number[]> | null = null;
+  private buildingDescendantIndex: Promise<Map<number, number[]>> | null = null;
+
+  // Returns the id list for a category subtree: the node itself plus every
+  // descendant. Used by `events.list?categoryGroup=<id>` to filter "all events
+  // under any leaf of X". Cached for the process lifetime since categories are
+  // seed-only (runtime CRUD is disabled).
+  @Action({
+    auth: EndpointType.PUBLIC,
+    cache: false,
+    params: {
+      id: { type: 'number', convert: true },
+    },
+    rest: 'GET /:id/descendants',
+  })
+  async descendants(ctx: Context<{ id: number }>): Promise<number[]> {
+    const index = await this.getDescendantIndex(ctx);
+    return index.get(Number(ctx.params.id)) ?? [];
+  }
+
+  private async getDescendantIndex(ctx: Context): Promise<Map<number, number[]>> {
+    if (this.descendantIndex) return this.descendantIndex;
+    if (this.buildingDescendantIndex) return this.buildingDescendantIndex;
+
+    this.buildingDescendantIndex = (async () => {
+      const rows: { id: number; parent: number | null }[] = await ctx.call('categories.find', {
+        fields: ['id', 'parent'],
+      });
+      const childrenByParent = new Map<number | null, number[]>();
+      for (const row of rows) {
+        const arr = childrenByParent.get(row.parent) ?? [];
+        arr.push(row.id);
+        childrenByParent.set(row.parent, arr);
+      }
+
+      const index = new Map<number, number[]>();
+      for (const row of rows) {
+        const collected: number[] = [];
+        const stack = [row.id];
+        while (stack.length) {
+          const cur = stack.pop()!;
+          collected.push(cur);
+          const kids = childrenByParent.get(cur);
+          if (kids) stack.push(...kids);
+        }
+        index.set(row.id, collected);
+      }
+      this.descendantIndex = index;
+      return index;
+    })();
+
+    try {
+      return await this.buildingDescendantIndex;
+    } finally {
+      this.buildingDescendantIndex = null;
+    }
+  }
 
   // Re-classifies existing events in bulk. Internal action — no `rest:` so it
   // can't be triggered by HTTP. Concurrency-locked. Use after seeding categories
