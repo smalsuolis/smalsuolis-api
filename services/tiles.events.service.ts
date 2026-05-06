@@ -114,6 +114,11 @@ function getSuperclusterHash(query: any = {}) {
         type: 'boolean',
         default: false,
       },
+      category: {
+        type: 'number',
+        columnType: 'integer',
+        columnName: 'categoryId',
+      },
     },
     scopes: {
       ...COMMON_SCOPES,
@@ -352,8 +357,37 @@ export default class TilesEventsService extends moleculer.Service {
         query: { id: ctx.params.query.subscription },
         populate: 'geomWithBuffer',
       });
+      // Mirror events.service.ts: subscription.categories may be at any level
+      // (the user picks coarse codes; events have leaf category_ids). Expand
+      // each via the cached descendant index before passing to the SQL builder.
+      for (const sub of subscriptions) {
+        if (!sub.categories?.length) continue;
+        const expanded: number[][] = await Promise.all(
+          sub.categories.map((id) =>
+            ctx.call<number[], { id: number }>('categories.descendants', { id }),
+          ),
+        );
+        sub.categories = [...new Set(expanded.flat())];
+      }
       ctx.params.query = applyEventsQueryBySubscriptions(ctx.params.query, subscriptions);
       delete ctx.params.query.subscription;
+    }
+
+    // `categoryGroup` mirrors events.service.ts behavior so the map view's
+    // tile requests honor the category filter — same expansion semantics:
+    // single id or an array, each one walked via categories.descendants and
+    // unioned into a flat leaf-id list.
+    if (ctx.params.query.categoryGroup) {
+      const raw = ctx.params.query.categoryGroup;
+      const groups = (Array.isArray(raw) ? raw : [raw]).map(Number).filter(Number.isFinite);
+      if (groups.length) {
+        const sets: number[][] = await Promise.all(
+          groups.map((id) => ctx.call<number[], { id: number }>('categories.descendants', { id })),
+        );
+        const ids = [...new Set(sets.flat())];
+        ctx.params.query.category = { $in: ids.length ? ids : [-1] };
+      }
+      delete ctx.params.query.categoryGroup;
     }
 
     return ctx;
