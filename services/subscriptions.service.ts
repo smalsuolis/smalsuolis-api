@@ -287,11 +287,6 @@ export default class SubscriptionsService extends moleculer.Service {
     return result;
   }
 
-  // Known limitation: this count does NOT respect the subscription's
-  // `categories` filter — would require a recursive CTE per sub to expand
-  // category subtrees inside the join. Listing (events.list?subscription=)
-  // does honor categories. So a sub with a category filter set will see a
-  // slightly inflated count badge vs actual list length. Fix when needed.
   @Action({
     rest: 'GET /:id/events/count',
     params: {
@@ -309,6 +304,63 @@ export default class SubscriptionsService extends moleculer.Service {
     const adapter = await this.getAdapter(ctx);
 
     const knex = adapter.client;
+
+    // Pre-expand each subscription's category selections to leaf ids so the
+    // count query honors the categories filter. Subscription.categories may
+    // be at any level (1, 2, or 3); events have leaf-level category_ids, so
+    // a level-2 selection like 'gyvenamieji' has to fan out to its children.
+    // categories.descendants is cached in-memory after first hit, so this is
+    // just a handful of map lookups even when called for all subscriptions.
+    const subsForExpansion: Array<{ id: number; categories: any }> = await knex('subscriptions')
+      .select('id', 'categories')
+      .modify((qb: any) => {
+        if (ids?.length) qb.whereIn('id', ids);
+      });
+
+    const uniqueCategoryIds = new Set<number>();
+    const subToCategoryIds = new Map<number, number[]>();
+    for (const sub of subsForExpansion) {
+      let cats: number[] = [];
+      if (typeof sub.categories === 'string') {
+        try {
+          cats = JSON.parse(sub.categories);
+        } catch {
+          cats = [];
+        }
+      } else if (Array.isArray(sub.categories)) {
+        cats = sub.categories;
+      }
+      const numericCats = (cats || []).map(Number).filter(Number.isFinite);
+      if (!numericCats.length) continue;
+      subToCategoryIds.set(sub.id, numericCats);
+      numericCats.forEach((c) => uniqueCategoryIds.add(c));
+    }
+
+    const descendantsById = new Map<number, number[]>();
+    for (const cid of uniqueCategoryIds) {
+      const desc: number[] = await ctx.call('categories.descendants', { id: cid });
+      descendantsById.set(cid, desc);
+    }
+
+    // Build a per-subscription CASE clause. Permissive matching: events with
+    // no category_id (non-statyba apps) pass through regardless, so a sub
+    // with apps=[infostatyba, miškai] and a category filter still gets the
+    // miškai events. Mirrors applyEventsQueryBySubscriptions.
+    const categoryCases: string[] = [];
+    for (const [subId, catIds] of subToCategoryIds.entries()) {
+      const leafIds = [...new Set(catIds.flatMap((c) => descendantsById.get(c) ?? []))].filter(
+        Number.isFinite,
+      );
+      if (!leafIds.length) continue;
+      categoryCases.push(
+        `WHEN s.id = ${subId} THEN (e.category_id IS NULL OR e.category_id IN (${leafIds.join(
+          ',',
+        )}))`,
+      );
+    }
+    const categoryClause = categoryCases.length
+      ? `CASE ${categoryCases.join(' ')} ELSE TRUE END`
+      : 'TRUE';
 
     const convertedSubscriptions = knex
       .select(
@@ -383,7 +435,8 @@ export default class SubscriptionsService extends moleculer.Service {
             ELSE TRUE
           END
           `),
-          );
+          )
+          .andOn(knex.raw(categoryClause));
       })
       .groupBy('s.id');
 
