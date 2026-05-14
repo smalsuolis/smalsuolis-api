@@ -49,6 +49,15 @@ const APPS = {
     description: 'Žemėtvarkos planavimo informacinė sistema',
     icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="m14.656 6.88l-14.656 9.984 9.952 4.96 12.48-12.256-7.776-2.688zm8.416 2.88l-7.424 7.584 7.84 6.304 8.544-10.752-8.96-3.136zm-7.872 8.064l-4.48 4.352 9.952 4.96 2.4-2.816-7.872-6.496z" fill="black"/></svg>`,
   },
+  [APP_KEYS.savivaldybesZemetvarkaVilnius]: {
+    type: APP_TYPE[APP_KEYS.savivaldybesZemetvarkaVilnius],
+    name: 'Planuojamas žemės paskirties keitimas (Vilnius)',
+    description:
+      'Vilniaus miesto savivaldybės skelbiami prašymai keisti žemės sklypo paskirtį (viešo aptarimo etape)',
+    // News / megaphone icon — distinguishes from the other land-planning app
+    // which uses a map icon and arrives post-approval.
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>',
+  },
 };
 
 @Service({
@@ -78,6 +87,7 @@ export default class SeedService extends moleculer.Service {
     await this.infostatyba(ctx, apps.infostatyba);
     await this.fishStockings(ctx, apps.izuvinimas);
     await this.lumbering(ctx, apps.miskoKirtimai);
+    await this.vilnius(ctx, apps.savivaldybesZemetvarka);
     return true;
   }
 
@@ -146,6 +156,22 @@ export default class SeedService extends moleculer.Service {
         });
         idByCode.set(node.code, created.id);
       }
+    }
+  }
+
+  @Method
+  async vilnius(ctx: Context, appsIds: App['id'][]) {
+    await this.broker.waitForServices(['integrations.vilnius', 'events']);
+
+    const count: number = await ctx.call('events.count', {
+      query: { app: { $in: appsIds } },
+    });
+
+    if (!count) {
+      await ctx.call('integrations.vilnius.getData', {
+        limit: process.env.NODE_ENV === 'local' ? 50 : 0,
+        initial: true,
+      });
     }
   }
 
