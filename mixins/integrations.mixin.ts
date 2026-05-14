@@ -122,43 +122,66 @@ export function IntegrationsMixin() {
           return;
         }
 
-        await stampCategory(ctx, app, event);
+        // Per-record fault tolerance: a transient ctx.call timeout on one
+        // record (broker queue overload, slow downstream, etc.) used to throw
+        // out of the integration's loop and kill the whole nightly sync. That
+        // left lastRunError stuck for days even though the next run usually
+        // works. Now we swallow the per-record error, log it, count it as
+        // invalid, and keep going so the sync as a whole can complete.
+        // Bumped timeout to 60s so the 10s default doesn't bite under load.
+        try {
+          await stampCategory(ctx, app, event);
 
-        const existingEvent: Event = await ctx.call('events.findOne', {
-          query: {
-            externalId: event.externalId,
-            app: app.id,
-          },
-        });
+          const existingEvent: Event = await ctx.call(
+            'events.findOne',
+            {
+              query: {
+                externalId: event.externalId,
+                app: app.id,
+              },
+            },
+            { timeout: 60_000 },
+          );
 
-        // Let's save old events (older than 30 days) as initial events
-        // Don't set createdAt in the future though
-        initial = initial || differenceInDays(new Date(), event.startAt) > 30;
+          // Let's save old events (older than 30 days) as initial events
+          // Don't set createdAt in the future though
+          initial = initial || differenceInDays(new Date(), event.startAt) > 30;
 
-        if (initial) {
-          if (event.startAt && event.startAt <= new Date()) {
-            event.createdAt = event.startAt;
-          } else {
+          if (initial) {
+            if (event.startAt && event.startAt <= new Date()) {
+              event.createdAt = event.startAt;
+            } else {
+              event.createdAt = new Date();
+            }
+          } else if (!existingEvent?.id) {
             event.createdAt = new Date();
           }
-        } else if (!existingEvent?.id) {
-          event.createdAt = new Date();
-        }
 
-        this.validExternalIds.add(event.externalId);
+          this.validExternalIds.add(event.externalId);
 
-        if (existingEvent?.id) {
-          await ctx.call('events.update', {
-            id: Number(existingEvent.id),
-            ...event,
-          });
-          this.stats.valid.updated++;
-          this.stats.valid.total++;
-        } else {
-          await ctx.call('events.create', event);
-
-          this.stats.valid.inserted++;
-          this.stats.valid.total++;
+          if (existingEvent?.id) {
+            await ctx.call(
+              'events.update',
+              { id: Number(existingEvent.id), ...event },
+              { timeout: 60_000 },
+            );
+            this.stats.valid.updated++;
+            this.stats.valid.total++;
+          } else {
+            await ctx.call('events.create', event, { timeout: 60_000 });
+            this.stats.valid.inserted++;
+            this.stats.valid.total++;
+          }
+        } catch (err: any) {
+          this.broker.logger.error(
+            `[${this.name}] createOrUpdateEvent failed for externalId=${event.externalId}: ${
+              err?.message ?? err
+            }`,
+          );
+          this.addInvalid();
+          // Mark valid so cleanupInvalidEvents doesn't soft-delete the existing
+          // row just because we momentarily couldn't update it.
+          if (event.externalId) this.validExternalIds.add(event.externalId);
         }
       },
 
@@ -189,38 +212,50 @@ export function IntegrationsMixin() {
             continue;
           }
 
-          // Resolved one event at a time; the loadCategoryIdMap call inside
-          // is cached after first hit per appType so this stays cheap.
-          const eventApp = apps.find((a) => a.id === event.app) ?? apps[0];
-          await stampCategory(ctx, eventApp, event);
+          // Per-record fault tolerance — see createOrUpdateEvent above.
+          try {
+            // Resolved one event at a time; the loadCategoryIdMap call inside
+            // is cached after first hit per appType so this stays cheap.
+            const eventApp = apps.find((a) => a.id === event.app) ?? apps[0];
+            await stampCategory(ctx, eventApp, event);
 
-          // Let's save old events (older than 30 days) as initial events
-          initial = initial || differenceInDays(new Date(), event.startAt) > 30;
-          if (initial) {
-            if (event.startAt && event.startAt <= new Date()) {
-              event.createdAt = event.startAt;
-            } else {
+            // Let's save old events (older than 30 days) as initial events
+            initial = initial || differenceInDays(new Date(), event.startAt) > 30;
+            if (initial) {
+              if (event.startAt && event.startAt <= new Date()) {
+                event.createdAt = event.startAt;
+              } else {
+                event.createdAt = new Date();
+              }
+            } else if (!existingEventsMap[event.externalId]) {
               event.createdAt = new Date();
             }
-          } else if (!existingEventsMap[event.externalId]) {
-            event.createdAt = new Date();
-          }
 
-          this.validExternalIds.add(event.externalId);
+            this.validExternalIds.add(event.externalId);
 
-          const existingEvent = existingEventsMap[event.externalId];
+            const existingEvent = existingEventsMap[event.externalId];
 
-          if (existingEvent?.id) {
-            await ctx.call('events.update', {
-              id: Number(existingEvent.id),
-              ...event,
-            });
-            this.stats.valid.updated++;
-            this.stats.valid.total++;
-          } else {
-            await ctx.call('events.create', event);
-            this.stats.valid.inserted++;
-            this.stats.valid.total++;
+            if (existingEvent?.id) {
+              await ctx.call(
+                'events.update',
+                { id: Number(existingEvent.id), ...event },
+                { timeout: 60_000 },
+              );
+              this.stats.valid.updated++;
+              this.stats.valid.total++;
+            } else {
+              await ctx.call('events.create', event, { timeout: 60_000 });
+              this.stats.valid.inserted++;
+              this.stats.valid.total++;
+            }
+          } catch (err: any) {
+            this.broker.logger.error(
+              `[${this.name}] createOrUpdateEvents failed for externalId=${event.externalId}: ${
+                err?.message ?? err
+              }`,
+            );
+            this.addInvalid();
+            if (event.externalId) this.validExternalIds.add(event.externalId);
           }
         }
       },
@@ -323,12 +358,20 @@ export function IntegrationsMixin() {
         for (const app of list) {
           if (!app?.id) continue;
           try {
-            await ctx.call('apps.update', {
-              id: app.id,
-              lastRunAt: new Date(),
-              lastRunError: null,
-              lastRunDurationMs: durationMs,
-            });
+            // Long timeout so this bookkeeping write doesn't fall victim to
+            // the same broker-overload-after-heavy-sync that this method is
+            // supposed to record. Default 10s used to silently fail under
+            // load, leaving lastRunError stuck for days (memory's known bug).
+            await ctx.call(
+              'apps.update',
+              {
+                id: app.id,
+                lastRunAt: new Date(),
+                lastRunError: null,
+                lastRunDurationMs: durationMs,
+              },
+              { timeout: 60_000 },
+            );
           } catch (err: any) {
             this.broker.logger.error(
               `recordRunSuccess failed for app ${app.id}: ${err?.message ?? err}`,
@@ -353,12 +396,19 @@ export function IntegrationsMixin() {
         for (const app of list) {
           if (!app?.id) continue;
           try {
-            await ctx.call('apps.update', {
-              id: app.id,
-              lastRunAt: new Date(),
-              lastRunError: message,
-              lastRunDurationMs: durationMs,
-            });
+            // See recordRunSuccess — same broker-overload concern. Long
+            // timeout so the failure ALWAYS gets recorded, even when the
+            // broker is the thing that flaked.
+            await ctx.call(
+              'apps.update',
+              {
+                id: app.id,
+                lastRunAt: new Date(),
+                lastRunError: message,
+                lastRunDurationMs: durationMs,
+              },
+              { timeout: 60_000 },
+            );
           } catch (err: any) {
             this.broker.logger.error(
               `recordRunFailure failed for app ${app.id}: ${err?.message ?? err}`,
