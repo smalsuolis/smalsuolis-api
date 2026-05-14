@@ -27,6 +27,15 @@ interface VilniusItem {
 // separated by `/` and `:`.
 const CADASTRAL_PATTERN = /\d+\/\d+:\d+/g;
 
+// parcelsSearch matches the last segment exactly and expects it
+// zero-padded to 4 digits. Vilnius's headings occasionally drop the
+// leading zeros (`:146` instead of `:0146`), so normalize before lookup.
+function normalizeCadastral(c: string): string {
+  const m = c.match(/^(\d+)\/(\d+):(\d+)$/);
+  if (!m) return c;
+  return `${m[1]}/${m[2]}:${m[3].padStart(4, '0')}`;
+}
+
 // Vilnius news category 65 = "Prašymų pakeisti/nustatyti žemės sklypo
 // pagrindinę žemės naudojimo paskirtį..." — the planned-change announcements
 // the client wants surfaced before they hit the post-approval zpdris feed.
@@ -37,6 +46,12 @@ const ARTICLE_BASE = 'https://vilnius.lt';
 // and the loop also bails as soon as a page returns no new items, so this
 // is a safety net not an expected limit.
 const MAX_PAGES = 50;
+
+// vilnius.lt serves an empty React shell to the default HeadlessChrome
+// user-agent. With a real Chrome UA the same URL returns fully-rendered SSR
+// HTML containing every news-card.
+const REAL_UA =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 @Service({
   name: 'integrations.vilnius',
@@ -126,13 +141,18 @@ export default class IntegrationsVilniusService extends moleculer.Service {
     if (!browser) throw lastErr || new Error('Could not connect to browser');
 
     const page = await browser.newPage();
+    await page.setUserAgent(REAL_UA);
+    await page.setViewport({ width: 1920, height: 1080 });
     try {
       const collected: VilniusItem[] = [];
       const seenLinks = new Set<string>();
 
       for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
         const url = `${LISTING_BASE}&page=${pageNum}`;
-        await page.goto(url, { waitUntil: 'networkidle0', timeout: 30_000 });
+        // Cards are server-rendered, so domcontentloaded is enough.
+        // networkidle0 never settles on this Next.js page (skeleton placeholders
+        // keep firing requests).
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
         // Cards are React-rendered. If none ever appear we treat as end-of-list.
         const found = await page
           .waitForSelector('[data-test="news-card"]', { timeout: 10_000 })
@@ -262,7 +282,9 @@ export default class IntegrationsVilniusService extends moleculer.Service {
         } items dropped: no cadastral in title`,
       );
     }
-    const uniqueCadastrals = [...new Set(itemsWithCadastral.flatMap((i) => i.cadastrals))];
+    const uniqueCadastrals = [
+      ...new Set(itemsWithCadastral.flatMap((i) => i.cadastrals.map(normalizeCadastral))),
+    ];
     if (!uniqueCadastrals.length) return [];
 
     const geomMap = await this.getGeometryData(uniqueCadastrals);
@@ -270,7 +292,7 @@ export default class IntegrationsVilniusService extends moleculer.Service {
     const result: VilniusItem[] = [];
     for (const item of itemsWithCadastral) {
       const geometries = item.cadastrals
-        .map((c) => geomMap.get(c))
+        .map((c) => geomMap.get(normalizeCadastral(c)))
         .filter((g): g is Feature => !!g?.geometry);
       if (!geometries.length) continue;
 
