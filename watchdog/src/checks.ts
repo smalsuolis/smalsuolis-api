@@ -4,7 +4,6 @@ import { broadcast } from './alerts';
 import {
   clearAlert,
   deleteKv,
-  getAlertLastSent,
   getKv,
   getServiceState,
   markAlertSent,
@@ -414,18 +413,18 @@ async function checkIntegrationFailures(
     return;
   }
 
-  // Dedup on (appKey, errorMessage) — if the error text changes on any app,
-  // treat as a new signal and re-alert. Pure-time cooldown alone would hide
-  // follow-up / different errors on the same app.
+  // Dedup on (appKey, errorMessage) — if the failing set OR the error text on
+  // any app changes, treat as a new signal and alert. Otherwise stay silent.
+  // Previously this had a time-based cooldown that re-fired the same alert
+  // every 6h which became spam when an integration genuinely stayed broken
+  // for days. Recovery alert (above) covers the "back to healthy" transition.
   const currentHash = failing
     .map((a) => `${a.appKey}::${a.lastRunError}`)
     .sort()
     .join('|');
   const previousHash = getKv('integration_failures:set');
-  const lastSent = getAlertLastSent('integration_failures');
-  const cooldownPassed = !lastSent || Date.now() - lastSent.getTime() >= config.alertCooldownMs;
 
-  if (currentHash === previousHash && !cooldownPassed) return;
+  if (currentHash === previousHash) return;
 
   const lines = failing.map((a) => {
     const when = a.lastRunAt ? formatTimestamp(new Date(a.lastRunAt)) : 'unknown time';
@@ -484,18 +483,18 @@ async function checkStaleness(bot: Telegraf, data: LastUpdateResponse, now: Date
     return;
   }
 
-  // Diff-based dedup: if the set of stale appKeys is the same as last alert,
-  // respect cooldown. If the set changed (new stale, or one recovered),
-  // send immediately so the user sees the delta.
+  // Diff-based dedup: if the set of stale appKeys is the same as the last
+  // alert, stay silent. Only resend when the set changes (something new
+  // went stale, or one recovered) — the recovery branch above handles
+  // "all fresh again". Same reason as integration_failures: time-based
+  // re-alerts on persistent staleness become spam.
   const currentHash = stale
     .map((s) => s.app.appKey)
     .sort()
     .join(',');
   const previousHash = getKv('staleness:set');
-  const lastSent = getAlertLastSent('staleness');
-  const cooldownPassed = !lastSent || Date.now() - lastSent.getTime() >= config.alertCooldownMs;
 
-  if (currentHash === previousHash && !cooldownPassed) return;
+  if (currentHash === previousHash) return;
 
   const lines = stale.map(({ app, ageMs }) => {
     const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
