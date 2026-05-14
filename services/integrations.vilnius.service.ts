@@ -138,7 +138,12 @@ export default class IntegrationsVilniusService extends moleculer.Service {
           .waitForSelector('[data-test="news-card"]', { timeout: 10_000 })
           .then(() => true)
           .catch(() => false);
-        if (!found) break;
+        if (!found) {
+          this.broker.logger.warn(
+            `[integrations.vilnius] page ${pageNum}: no cards found within 10s on ${url}`,
+          );
+          break;
+        }
 
         const items: VilniusItem[] = await page.evaluate((pattern: string) => {
           const re = new RegExp(pattern, 'g');
@@ -173,13 +178,23 @@ export default class IntegrationsVilniusService extends moleculer.Service {
         }, CADASTRAL_PATTERN.source);
 
         let appendedThisPage = 0;
+        let withCadastral = 0;
         for (const item of items) {
           if (!item.link || seenLinks.has(item.link)) continue;
           seenLinks.add(item.link);
           collected.push(item);
           appendedThisPage++;
+          if (item.cadastrals.length) withCadastral++;
           if (limit && collected.length >= limit) break;
         }
+
+        this.broker.logger.info(
+          `[integrations.vilnius] page ${pageNum}: cards=${
+            items.length
+          } new=${appendedThisPage} withCadastral=${withCadastral} (sample title="${(
+            items[0]?.title || ''
+          ).slice(0, 80)}")`,
+        );
 
         if (limit && collected.length >= limit) break;
         // No new items on this page → either end-of-list, or `?page=` doesn't
