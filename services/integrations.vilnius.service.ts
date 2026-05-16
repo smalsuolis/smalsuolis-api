@@ -5,7 +5,6 @@ import { Action, Method, Service } from 'moleculer-decorators';
 import wkx from 'wkx';
 import * as turf from '@turf/turf';
 import { Feature } from 'geojsonjs';
-import puppeteer, { Browser, Page } from 'puppeteer';
 // @ts-ignore
 import Cron from '@r2d2bzh/moleculer-cron';
 
@@ -13,6 +12,7 @@ import { App, APP_KEYS } from './apps.service';
 import { Event, toEventBodyMarkdown } from './events.service';
 import { IntegrationsMixin } from '../mixins/integrations.mixin';
 import { parcelsSearch } from '../utils/boundaries';
+import { buildJumpHttpsOpt } from '../utils/lt-jump';
 
 interface VilniusItem {
   link: string;
@@ -39,22 +39,21 @@ function normalizeCadastral(c: string): string {
 // Vilnius news category 65 = "Prašymų pakeisti/nustatyti žemės sklypo
 // pagrindinę žemės naudojimo paskirtį..." — the planned-change announcements
 // the client wants surfaced before they hit the post-approval zpdris feed.
-const LISTING_BASE = 'https://vilnius.lt/naujienos?categories=65';
+const CATEGORY_QUERY = 'categories=65';
 const ARTICLE_BASE = 'https://vilnius.lt';
 
 // Hard upper bound on pagination — there are ~282 cards as of writing,
-// and the loop also bails as soon as a page returns no new items, so this
+// and the loop also bails as soon as a page returns no cards, so this
 // is a safety net not an expected limit.
 const MAX_PAGES = 50;
 
-// vilnius.lt serves an empty React shell to the default HeadlessChrome
-// user-agent. With a real Chrome UA the same URL returns fully-rendered SSR
-// HTML containing every news-card.
-const REAL_UA =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
 @Service({
   name: 'integrations.vilnius',
+  settings: {
+    // Direct upstream from LT, jump-proxy URL from prod env. The proxy preserves
+    // query string via nginx `$is_args$args`, so we append the same way either way.
+    listingUrl: process.env.VILNIUS_JUMP_URL || `${ARTICLE_BASE}/naujienos`,
+  },
   mixins: [Cron, IntegrationsMixin()],
   crons: [
     {
@@ -87,7 +86,7 @@ export default class IntegrationsVilniusService extends moleculer.Service {
     if (!app?.id) return;
 
     try {
-      const items = await this.scrapeListing(limit);
+      const items = await this.scrapeListing(ctx, limit);
       const itemsWithGeom = await this.attachGeometries(items);
 
       const events: Partial<Event>[] = itemsWithGeom.map((item) => ({
@@ -102,8 +101,6 @@ export default class IntegrationsVilniusService extends moleculer.Service {
         geom: item.geom,
         app: app.id,
         isFullDay: true,
-        // Article slug is the stable id Vilnius assigns; cadastral is in it
-        // but the slug is what won't change if the body gets edited.
         externalId: item.link,
       }));
 
@@ -118,121 +115,95 @@ export default class IntegrationsVilniusService extends moleculer.Service {
   }
 
   @Method
-  async getBrowser(): Promise<Browser> {
-    return await puppeteer.connect({
-      browserWSEndpoint: process.env.CHROME_WS_ENDPOINT || 'ws://localhost:9321',
-      acceptInsecureCerts: true,
-    });
+  async fetchPage(ctx: Context, pageNum: number): Promise<string> {
+    const url = `${this.settings.listingUrl}?${CATEGORY_QUERY}&page=${pageNum}`;
+    return await ctx.call(
+      'http.get',
+      {
+        url,
+        opt: { responseType: 'text', ...buildJumpHttpsOpt() },
+      },
+      { timeout: 30_000 },
+    );
+  }
+
+  // Parse the SSR HTML. Cards are delimited by `data-test="news-card"`; inside
+  // each chunk we pull link/heading/date with simple regex. The markup is stable
+  // — Next.js SSR with named hooks — so this is more reliable than a full DOM
+  // parser would be at smaller cost.
+  @Method
+  parseCards(html: string): VilniusItem[] {
+    const cardMarker = /data-test="news-card"/g;
+    const chunks: string[] = [];
+    let lastIdx = -1;
+    let m: RegExpExecArray | null;
+    while ((m = cardMarker.exec(html))) {
+      if (lastIdx >= 0) chunks.push(html.slice(lastIdx, m.index));
+      lastIdx = m.index;
+    }
+    if (lastIdx >= 0) chunks.push(html.slice(lastIdx, lastIdx + 4000));
+
+    const items: VilniusItem[] = [];
+    for (const chunk of chunks) {
+      const linkMatch = chunk.match(/href="(\/naujienos\/[^"]+)"/);
+      const link = linkMatch?.[1] || '';
+      if (!link) continue;
+
+      const headingMatch = chunk.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/);
+      const title = (headingMatch?.[1] || '').replace(/<[^>]+>/g, '').trim();
+
+      const dateMatch = chunk.match(/\d{4}-\d{2}-\d{2}/);
+      const date = dateMatch?.[0] || null;
+
+      const cadastrals = title.match(CADASTRAL_PATTERN) || [];
+      items.push({ link, title, date, cadastrals });
+    }
+    return items;
   }
 
   @Method
-  async scrapeListing(limit: number): Promise<VilniusItem[]> {
-    const maxRetries = 3;
-    let browser: Browser | undefined;
-    let lastErr: any;
-    for (let i = 0; i < maxRetries; i++) {
+  async scrapeListing(ctx: Context, limit: number): Promise<VilniusItem[]> {
+    const collected: VilniusItem[] = [];
+    const seenLinks = new Set<string>();
+
+    for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
+      let html: string;
       try {
-        browser = await this.getBrowser();
-        if (browser) break;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    if (!browser) throw lastErr || new Error('Could not connect to browser');
-
-    const page = await browser.newPage();
-    await page.setUserAgent(REAL_UA);
-    await page.setViewport({ width: 1920, height: 1080 });
-    try {
-      const collected: VilniusItem[] = [];
-      const seenLinks = new Set<string>();
-
-      for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
-        const url = `${LISTING_BASE}&page=${pageNum}`;
-        // Cards are server-rendered, so domcontentloaded is enough.
-        // networkidle0 never settles on this Next.js page (skeleton placeholders
-        // keep firing requests).
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-        // Cards are React-rendered. If none ever appear we treat as end-of-list.
-        const found = await page
-          .waitForSelector('[data-test="news-card"]', { timeout: 10_000 })
-          .then(() => true)
-          .catch(() => false);
-        if (!found) {
-          this.broker.logger.warn(
-            `[integrations.vilnius] page ${pageNum}: no cards found within 10s on ${url}`,
-          );
-          break;
-        }
-
-        const items: VilniusItem[] = await page.evaluate((pattern: string) => {
-          const re = new RegExp(pattern, 'g');
-          const cards = Array.from(document.querySelectorAll('[data-test="news-card"]'));
-          return cards.map((card) => {
-            const a = card.querySelector('a[href^="/naujienos/"]');
-            const link = a?.getAttribute('href') || '';
-            // Card title text — there's an h2/h3/heading-like element; the
-            // outermost text content of the card is the most resilient grab.
-            const text = (card as HTMLElement).innerText || '';
-            // Date appears as YYYY-MM-DD on the card.
-            const dateMatch = text.match(/\d{4}-\d{2}-\d{2}/);
-            // Title is the visible non-date, non-tag text — pull h2/h3/strong
-            // first; fall back to the longest line that isn't the date.
-            const heading = card.querySelector('h2, h3, [class*="title"], a [class*="title"]');
-            let title = heading?.textContent?.trim() || '';
-            if (!title) {
-              const lines = text
-                .split('\n')
-                .map((s: string) => s.trim())
-                .filter((s: string) => s && !/^\d{4}-\d{2}-\d{2}$/.test(s));
-              title = lines.sort((a: string, b: string) => b.length - a.length)[0] || '';
-            }
-            const cadastrals = title.match(re) || [];
-            return {
-              link,
-              title,
-              date: dateMatch ? dateMatch[0] : null,
-              cadastrals: cadastrals as string[],
-            };
-          });
-        }, CADASTRAL_PATTERN.source);
-
-        let appendedThisPage = 0;
-        let withCadastral = 0;
-        for (const item of items) {
-          if (!item.link || seenLinks.has(item.link)) continue;
-          seenLinks.add(item.link);
-          collected.push(item);
-          appendedThisPage++;
-          if (item.cadastrals.length) withCadastral++;
-          if (limit && collected.length >= limit) break;
-        }
-
-        this.broker.logger.info(
-          `[integrations.vilnius] page ${pageNum}: cards=${
-            items.length
-          } new=${appendedThisPage} withCadastral=${withCadastral} (sample title="${(
-            items[0]?.title || ''
-          ).slice(0, 80)}")`,
+        html = await this.fetchPage(ctx, pageNum);
+      } catch (err: any) {
+        this.broker.logger.warn(
+          `[integrations.vilnius] page ${pageNum}: fetch failed: ${err?.message ?? err}`,
         );
+        break;
+      }
 
+      const items = this.parseCards(html);
+      let appendedThisPage = 0;
+      let withCadastral = 0;
+      for (const item of items) {
+        if (!item.link || seenLinks.has(item.link)) continue;
+        seenLinks.add(item.link);
+        collected.push(item);
+        appendedThisPage++;
+        if (item.cadastrals.length) withCadastral++;
         if (limit && collected.length >= limit) break;
-        // No new items on this page → either end-of-list, or `?page=` doesn't
-        // paginate the way we expect (vilnius.lt is Next.js, server may just
-        // re-render the first page). Either way, stop walking.
-        if (appendedThisPage === 0) break;
       }
 
-      return collected;
-    } finally {
-      await page.close().catch(() => null);
-      // `disconnect` returns the browser to the remote pool without closing it.
-      try {
-        await browser.disconnect();
-      } catch {
-        /* noop */
-      }
+      this.broker.logger.info(
+        `[integrations.vilnius] page ${pageNum}: cards=${items.length} new=${appendedThisPage} withCadastral=${withCadastral} (sample title="${(
+          items[0]?.title || ''
+        ).slice(0, 80)}")`,
+      );
+
+      if (limit && collected.length >= limit) break;
+      // No cards on this page = end of list.
+      if (items.length === 0) break;
+      // No NEW items but page had cards = pagination not advancing (e.g. server
+      // re-rendered the first page); stop walking either way.
+      if (appendedThisPage === 0) break;
     }
+
+    return collected;
   }
 
   // Same lookup pattern as integrations.landManagementPlanning — chunk the
