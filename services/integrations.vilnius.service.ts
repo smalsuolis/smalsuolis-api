@@ -52,7 +52,9 @@ const MAX_PAGES = 50;
   settings: {
     // Direct upstream from LT, jump-proxy URL from prod env. The proxy preserves
     // query string via nginx `$is_args$args`, so we append the same way either way.
-    listingUrl: process.env.VILNIUS_JUMP_URL || `${ARTICLE_BASE}/naujienos`,
+    listingUrl: process.env.SAVIVALDYBE_JUMP_URL
+      ? `${process.env.SAVIVALDYBE_JUMP_URL}/vilnius-naujienos`
+      : `${ARTICLE_BASE}/naujienos`,
   },
   mixins: [Cron, IntegrationsMixin()],
   crons: [
@@ -190,7 +192,9 @@ export default class IntegrationsVilniusService extends moleculer.Service {
       }
 
       this.broker.logger.info(
-        `[integrations.vilnius] page ${pageNum}: cards=${items.length} new=${appendedThisPage} withCadastral=${withCadastral} (sample title="${(
+        `[integrations.vilnius] page ${pageNum}: cards=${
+          items.length
+        } new=${appendedThisPage} withCadastral=${withCadastral} (sample title="${(
           items[0]?.title || ''
         ).slice(0, 80)}")`,
       );
