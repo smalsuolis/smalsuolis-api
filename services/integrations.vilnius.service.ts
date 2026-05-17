@@ -14,7 +14,14 @@ import { IntegrationsMixin } from '../mixins/integrations.mixin';
 import { parcelsSearch } from '../utils/boundaries';
 import { buildJumpHttpsOpt } from '../utils/lt-jump';
 
-interface VilniusItem {
+interface VilniusArticle {
+  currentUse: string | null;
+  requestedUse: string | null;
+  commentPeriod: string | null;
+  commentEndDate: string | null;
+}
+
+interface VilniusItem extends VilniusArticle {
   link: string;
   title: string;
   date: string | null;
@@ -22,45 +29,33 @@ interface VilniusItem {
   geom?: any;
 }
 
-// Cadastral number format used in titles, same as the existing zpdris
-// integration: e.g. `0101/0039:1330`. Anchored to digits-only segments
-// separated by `/` and `:`.
 const CADASTRAL_PATTERN = /\d+\/\d+:\d+/g;
 
-// parcelsSearch matches the last segment exactly and expects it
-// zero-padded to 4 digits. Vilnius's headings occasionally drop the
-// leading zeros (`:146` instead of `:0146`), so normalize before lookup.
 function normalizeCadastral(c: string): string {
   const m = c.match(/^(\d+)\/(\d+):(\d+)$/);
   if (!m) return c;
   return `${m[1]}/${m[2]}:${m[3].padStart(4, '0')}`;
 }
 
-// Vilnius news category 65 = "Prašymų pakeisti/nustatyti žemės sklypo
-// pagrindinę žemės naudojimo paskirtį..." — the planned-change announcements
-// the client wants surfaced before they hit the post-approval zpdris feed.
 const CATEGORY_QUERY = 'categories=65';
 const ARTICLE_BASE = 'https://vilnius.lt';
-
-// Hard upper bound on pagination — there are ~282 cards as of writing,
-// and the loop also bails as soon as a page returns no cards, so this
-// is a safety net not an expected limit.
 const MAX_PAGES = 50;
+// Fetch articles concurrently in small batches to stay polite.
+const ARTICLE_CONCURRENCY = 5;
 
 @Service({
   name: 'integrations.vilnius',
   settings: {
-    // Direct upstream from LT, jump-proxy URL from prod env. The proxy preserves
-    // query string via nginx `$is_args$args`, so we append the same way either way.
-    listingUrl: process.env.SAVIVALDYBE_JUMP_URL
-      ? `${process.env.SAVIVALDYBE_JUMP_URL}/vilnius-naujienos`
-      : `${ARTICLE_BASE}/naujienos`,
+    // Listing base: proxy path /vilnius/naujienos, article path /vilnius/naujienos/<slug>.
+    // Direct upstream is used in local dev (LT IP); jump proxy used on Hetzner.
+    baseUrl: process.env.SAVIVALDYBE_JUMP_URL
+      ? `${process.env.SAVIVALDYBE_JUMP_URL}/vilnius`
+      : ARTICLE_BASE,
   },
   mixins: [Cron, IntegrationsMixin()],
   crons: [
     {
       name: 'integrationsVilnius',
-      // Daily at 06:00 EEST — after the existing 05:00 zpdris cron.
       cronTime: '0 6 * * *',
       timeZone: 'Europe/Vilnius',
       async onTick() {
@@ -94,12 +89,16 @@ export default class IntegrationsVilniusService extends moleculer.Service {
       const events: Partial<Event>[] = itemsWithGeom.map((item) => ({
         name: item.title,
         body: toEventBodyMarkdown([
+          { title: 'Esama paskirtis', value: item.currentUse || '-' },
+          { title: 'Pageidaujama paskirtis', value: item.requestedUse || '-' },
+          { title: 'Viešinimas', value: item.commentPeriod || '-' },
           { title: 'Kadastro Nr.', value: item.cadastrals.join(', ') },
           { title: 'Data', value: item.date || '-' },
           { title: 'Šaltinis', value: `${ARTICLE_BASE}${item.link}` },
         ]),
         url: `${ARTICLE_BASE}${item.link}`,
         startAt: item.date ? new Date(item.date) : new Date(),
+        endAt: item.commentEndDate ? new Date(item.commentEndDate) : undefined,
         geom: item.geom,
         app: app.id,
         isFullDay: true,
@@ -117,24 +116,16 @@ export default class IntegrationsVilniusService extends moleculer.Service {
   }
 
   @Method
-  async fetchPage(ctx: Context, pageNum: number): Promise<string> {
-    const url = `${this.settings.listingUrl}?${CATEGORY_QUERY}&page=${pageNum}`;
+  async fetchHtml(ctx: Context, url: string): Promise<string> {
     return await ctx.call(
       'http.get',
-      {
-        url,
-        opt: { responseType: 'text', ...buildJumpHttpsOpt() },
-      },
+      { url, opt: { responseType: 'text', ...buildJumpHttpsOpt() } },
       { timeout: 30_000 },
     );
   }
 
-  // Parse the SSR HTML. Cards are delimited by `data-test="news-card"`; inside
-  // each chunk we pull link/heading/date with simple regex. The markup is stable
-  // — Next.js SSR with named hooks — so this is more reliable than a full DOM
-  // parser would be at smaller cost.
   @Method
-  parseCards(html: string): VilniusItem[] {
+  parseCards(html: string): Omit<VilniusItem, keyof VilniusArticle>[] {
     const cardMarker = /data-test="news-card"/g;
     const chunks: string[] = [];
     let lastIdx = -1;
@@ -145,18 +136,15 @@ export default class IntegrationsVilniusService extends moleculer.Service {
     }
     if (lastIdx >= 0) chunks.push(html.slice(lastIdx, lastIdx + 4000));
 
-    const items: VilniusItem[] = [];
+    const items: Omit<VilniusItem, keyof VilniusArticle>[] = [];
     for (const chunk of chunks) {
       const linkMatch = chunk.match(/href="(\/naujienos\/[^"]+)"/);
       const link = linkMatch?.[1] || '';
       if (!link) continue;
-
       const headingMatch = chunk.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/);
       const title = (headingMatch?.[1] || '').replace(/<[^>]+>/g, '').trim();
-
       const dateMatch = chunk.match(/\d{4}-\d{2}-\d{2}/);
       const date = dateMatch?.[0] || null;
-
       const cadastrals = title.match(CADASTRAL_PATTERN) || [];
       items.push({ link, title, date, cadastrals });
     }
@@ -164,14 +152,77 @@ export default class IntegrationsVilniusService extends moleculer.Service {
   }
 
   @Method
+  parseArticle(html: string): VilniusArticle {
+    const paras = [...html.matchAll(/<p[^>]*>([\s\S]{40,}?)<\/p>/g)].map((m) =>
+      m[1]
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .trim(),
+    );
+
+    const find = (keyword: string) =>
+      paras.find((p) => p.toLowerCase().includes(keyword.toLowerCase())) ?? null;
+
+    const currentRaw = find('Esama pagrindinė žemės naudojimo paskirtis');
+    const requestedRaw = find('Pageidaujama pagrindinė žemės naudojimo paskirtis');
+    const periodRaw = find('Prašymas viešinamas');
+
+    const stripLabel = (s: string | null, label: string) =>
+      s ? s.replace(new RegExp(`.*${label}[^:]*:\\s*`, 'i'), '').trim() : null;
+
+    const currentUse = stripLabel(currentRaw, 'Esama pagrindinė žemės naudojimo paskirtis.*?būdas');
+    const requestedUse = stripLabel(
+      requestedRaw,
+      'Pageidaujama pagrindinė žemės naudojimo paskirtis.*?būdas',
+    );
+
+    let commentPeriod: string | null = null;
+    let commentEndDate: string | null = null;
+    if (periodRaw) {
+      const LT_MONTHS: Record<string, string> = {
+        sausio: '01',
+        vasario: '02',
+        kovo: '03',
+        balandžio: '04',
+        gegužės: '05',
+        birželio: '06',
+        liepos: '07',
+        rugpjūčio: '08',
+        rugsėjo: '09',
+        spalio: '10',
+        lapkričio: '11',
+        gruodžio: '12',
+      };
+      const LT_DATE_RE = new RegExp(
+        `(\\d{4})\\s+m\\.\\s+(${Object.keys(LT_MONTHS).join('|')})\\s+(\\d{1,2})\\s+d`,
+        'gi',
+      );
+      const ltDates = [...periodRaw.matchAll(LT_DATE_RE)].map(
+        (m) => `${m[1]}-${LT_MONTHS[m[2].toLowerCase()]}-${m[3].padStart(2, '0')}`,
+      );
+      if (ltDates.length >= 2) {
+        commentPeriod = `${ltDates[0]} – ${ltDates[1]}`;
+        commentEndDate = ltDates[1];
+      } else if (ltDates.length === 1) {
+        commentEndDate = ltDates[0];
+        commentPeriod = ltDates[0];
+      }
+    }
+
+    return { currentUse, requestedUse, commentPeriod, commentEndDate };
+  }
+
+  @Method
   async scrapeListing(ctx: Context, limit: number): Promise<VilniusItem[]> {
-    const collected: VilniusItem[] = [];
+    const collected: Omit<VilniusItem, keyof VilniusArticle>[] = [];
     const seenLinks = new Set<string>();
 
     for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
+      const url = `${this.settings.baseUrl}/naujienos?${CATEGORY_QUERY}&page=${pageNum}`;
       let html: string;
       try {
-        html = await this.fetchPage(ctx, pageNum);
+        html = await this.fetchHtml(ctx, url);
       } catch (err: any) {
         this.broker.logger.warn(
           `[integrations.vilnius] page ${pageNum}: fetch failed: ${err?.message ?? err}`,
@@ -194,25 +245,49 @@ export default class IntegrationsVilniusService extends moleculer.Service {
       this.broker.logger.info(
         `[integrations.vilnius] page ${pageNum}: cards=${
           items.length
-        } new=${appendedThisPage} withCadastral=${withCadastral} (sample title="${(
+        } new=${appendedThisPage} withCadastral=${withCadastral} (sample="${(
           items[0]?.title || ''
-        ).slice(0, 80)}")`,
+        ).slice(0, 60)}")`,
       );
 
       if (limit && collected.length >= limit) break;
-      // No cards on this page = end of list.
-      if (items.length === 0) break;
-      // No NEW items but page had cards = pagination not advancing (e.g. server
-      // re-rendered the first page); stop walking either way.
-      if (appendedThisPage === 0) break;
+      if (items.length === 0 || appendedThisPage === 0) break;
     }
 
-    return collected;
+    // Enrich with article details in concurrent batches.
+    this.broker.logger.info(
+      `[integrations.vilnius] fetching ${collected.length} articles (concurrency=${ARTICLE_CONCURRENCY})`,
+    );
+    const enriched: VilniusItem[] = [];
+    for (let i = 0; i < collected.length; i += ARTICLE_CONCURRENCY) {
+      const batch = collected.slice(i, i + ARTICLE_CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (item) => {
+          const articleUrl = `${this.settings.baseUrl}${item.link}`;
+          try {
+            const html = await this.fetchHtml(ctx, articleUrl);
+            return { ...item, ...this.parseArticle(html) };
+          } catch (err: any) {
+            this.broker.logger.warn(
+              `[integrations.vilnius] article fetch failed ${item.link}: ${err?.message ?? err}`,
+            );
+            return {
+              ...item,
+              currentUse: null,
+              requestedUse: null,
+              commentPeriod: null,
+              commentEndDate: null,
+            };
+          }
+        }),
+      );
+      enriched.push(...results);
+    }
+    this.broker.logger.info(`[integrations.vilnius] article enrichment done`);
+
+    return enriched;
   }
 
-  // Same lookup pattern as integrations.landManagementPlanning — chunk the
-  // cadastral numbers to stay within the boundaries API page limit, parse
-  // the WKB geometry and tag with EPSG:4326.
   @Method
   async getGeometryData(cadastralNumbers: string[]): Promise<Map<string, Feature>> {
     const geomMap = new Map<string, Feature>();
@@ -244,9 +319,6 @@ export default class IntegrationsVilniusService extends moleculer.Service {
     return geomMap;
   }
 
-  // Drops items without resolvable geometry — without coords the event has
-  // nothing to plot on the map and can't intersect any subscription, so it'd
-  // be dead weight. Logged so we can see how often this happens.
   @Method
   async attachGeometries(items: VilniusItem[]): Promise<VilniusItem[]> {
     const itemsWithCadastral = items.filter((i) => i.cadastrals.length > 0);
