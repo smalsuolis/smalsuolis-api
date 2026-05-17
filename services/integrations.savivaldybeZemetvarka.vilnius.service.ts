@@ -44,7 +44,7 @@ const MAX_PAGES = 50;
 const ARTICLE_CONCURRENCY = 5;
 
 @Service({
-  name: 'integrations.vilnius',
+  name: 'integrations.savivaldybeZemetvarka.vilnius',
   settings: {
     // Listing base: proxy path /vilnius/naujienos, article path /vilnius/naujienos/<slug>.
     // Direct upstream is used in local dev (LT IP); jump proxy used on Hetzner.
@@ -55,16 +55,16 @@ const ARTICLE_CONCURRENCY = 5;
   mixins: [Cron, IntegrationsMixin()],
   crons: [
     {
-      name: 'integrationsVilnius',
+      name: 'integrationsSavivaldybeZemetvarkaVilnius',
       cronTime: '0 6 * * *',
       timeZone: 'Europe/Vilnius',
       async onTick() {
-        await this.call('integrations.vilnius.getData');
+        await this.call('integrations.savivaldybeZemetvarka.vilnius.getData');
       },
     },
   ],
 })
-export default class IntegrationsVilniusService extends moleculer.Service {
+export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends moleculer.Service {
   @Action({
     timeout: 0,
     params: {
@@ -225,7 +225,9 @@ export default class IntegrationsVilniusService extends moleculer.Service {
         html = await this.fetchHtml(ctx, url);
       } catch (err: any) {
         this.broker.logger.warn(
-          `[integrations.vilnius] page ${pageNum}: fetch failed: ${err?.message ?? err}`,
+          `[integrations.savivaldybeZemetvarka.vilnius] page ${pageNum}: fetch failed: ${
+            err?.message ?? err
+          }`,
         );
         break;
       }
@@ -243,7 +245,7 @@ export default class IntegrationsVilniusService extends moleculer.Service {
       }
 
       this.broker.logger.info(
-        `[integrations.vilnius] page ${pageNum}: cards=${
+        `[integrations.savivaldybeZemetvarka.vilnius] page ${pageNum}: cards=${
           items.length
         } new=${appendedThisPage} withCadastral=${withCadastral} (sample="${(
           items[0]?.title || ''
@@ -256,7 +258,7 @@ export default class IntegrationsVilniusService extends moleculer.Service {
 
     // Enrich with article details in concurrent batches.
     this.broker.logger.info(
-      `[integrations.vilnius] fetching ${collected.length} articles (concurrency=${ARTICLE_CONCURRENCY})`,
+      `[integrations.savivaldybeZemetvarka.vilnius] fetching ${collected.length} articles (concurrency=${ARTICLE_CONCURRENCY})`,
     );
     const enriched: VilniusItem[] = [];
     for (let i = 0; i < collected.length; i += ARTICLE_CONCURRENCY) {
@@ -269,7 +271,9 @@ export default class IntegrationsVilniusService extends moleculer.Service {
             return { ...item, ...this.parseArticle(html) };
           } catch (err: any) {
             this.broker.logger.warn(
-              `[integrations.vilnius] article fetch failed ${item.link}: ${err?.message ?? err}`,
+              `[integrations.savivaldybeZemetvarka.vilnius] article fetch failed ${item.link}: ${
+                err?.message ?? err
+              }`,
             );
             return {
               ...item,
@@ -283,7 +287,7 @@ export default class IntegrationsVilniusService extends moleculer.Service {
       );
       enriched.push(...results);
     }
-    this.broker.logger.info(`[integrations.vilnius] article enrichment done`);
+    this.broker.logger.info(`[integrations.savivaldybeZemetvarka.vilnius] article enrichment done`);
 
     return enriched;
   }
@@ -310,9 +314,9 @@ export default class IntegrationsVilniusService extends moleculer.Service {
         });
       } catch (err: any) {
         this.broker.logger.warn(
-          `[integrations.vilnius] parcelsSearch chunk failed (${chunk.length} cadastrals): ${
-            err?.message ?? err
-          }`,
+          `[integrations.savivaldybeZemetvarka.vilnius] parcelsSearch chunk failed (${
+            chunk.length
+          } cadastrals): ${err?.message ?? err}`,
         );
       }
     }
@@ -324,7 +328,7 @@ export default class IntegrationsVilniusService extends moleculer.Service {
     const itemsWithCadastral = items.filter((i) => i.cadastrals.length > 0);
     if (itemsWithCadastral.length < items.length) {
       this.broker.logger.info(
-        `[integrations.vilnius] ${items.length - itemsWithCadastral.length}/${
+        `[integrations.savivaldybeZemetvarka.vilnius] ${items.length - itemsWithCadastral.length}/${
           items.length
         } items dropped: no cadastral in title`,
       );
@@ -354,9 +358,9 @@ export default class IntegrationsVilniusService extends moleculer.Service {
 
     if (result.length < itemsWithCadastral.length) {
       this.broker.logger.info(
-        `[integrations.vilnius] ${itemsWithCadastral.length - result.length}/${
-          itemsWithCadastral.length
-        } items dropped: cadastral not found in parcels API`,
+        `[integrations.savivaldybeZemetvarka.vilnius] ${
+          itemsWithCadastral.length - result.length
+        }/${itemsWithCadastral.length} items dropped: cadastral not found in parcels API`,
       );
     }
 
