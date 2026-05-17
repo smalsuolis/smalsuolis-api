@@ -8,6 +8,8 @@ import { Feature } from 'geojsonjs';
 // @ts-ignore
 import Cron from '@r2d2bzh/moleculer-cron';
 
+import { parse } from 'node-html-parser';
+
 import { App, APP_KEYS } from './apps.service';
 import { Event, toEventBodyMarkdown } from './events.service';
 import { IntegrationsMixin } from '../mixins/integrations.mixin';
@@ -126,24 +128,16 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
 
   @Method
   parseCards(html: string): Omit<VilniusItem, keyof VilniusArticle>[] {
-    const cardMarker = /data-test="news-card"/g;
-    const chunks: string[] = [];
-    let lastIdx = -1;
-    let m: RegExpExecArray | null;
-    while ((m = cardMarker.exec(html))) {
-      if (lastIdx >= 0) chunks.push(html.slice(lastIdx, m.index));
-      lastIdx = m.index;
-    }
-    if (lastIdx >= 0) chunks.push(html.slice(lastIdx, lastIdx + 4000));
-
+    const root = parse(html);
     const items: Omit<VilniusItem, keyof VilniusArticle>[] = [];
-    for (const chunk of chunks) {
-      const linkMatch = chunk.match(/href="(\/naujienos\/[^"]+)"/);
-      const link = linkMatch?.[1] || '';
+
+    for (const card of root.querySelectorAll('[data-test="news-card"]')) {
+      const link = card.querySelector('a[href^="/naujienos/"]')?.getAttribute('href') || '';
       if (!link) continue;
-      const headingMatch = chunk.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/);
-      const title = (headingMatch?.[1] || '').replace(/<[^>]+>/g, '').trim();
-      const dateMatch = chunk.match(/\d{4}-\d{2}-\d{2}/);
+
+      const heading = card.querySelector('h1,h2,h3,h4,h5,h6');
+      const title = heading?.text.trim() || '';
+      const dateMatch = card.text.match(/\d{4}-\d{2}-\d{2}/);
       const date = dateMatch?.[0] || null;
       const cadastrals = title.match(CADASTRAL_PATTERN) || [];
       items.push({ link, title, date, cadastrals });
@@ -153,33 +147,33 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
 
   @Method
   parseArticle(html: string): VilniusArticle {
-    const paras = [...html.matchAll(/<p[^>]*>([\s\S]{40,}?)<\/p>/g)].map((m) =>
-      m[1]
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .trim(),
+    const root = parse(html);
+
+    const findPara = (keyword: string) =>
+      root
+        .querySelectorAll('p')
+        .find((p) => p.text.toLowerCase().includes(keyword.toLowerCase())) ?? null;
+
+    const currentEl = findPara('esama pagrindinė žemės naudojimo paskirtis');
+    const requestedEl = findPara('pageidaujama pagrindinė žemės naudojimo paskirtis');
+    const periodEl = findPara('prašymas viešinamas');
+
+    const stripLabel = (text: string | null, label: string) =>
+      text ? text.replace(new RegExp(`.*${label}[^:]*:\\s*`, 'i'), '').trim() : null;
+
+    const currentUse = stripLabel(
+      currentEl?.text ?? null,
+      'Esama pagrindinė žemės naudojimo paskirtis.*?būdas',
     );
-
-    const find = (keyword: string) =>
-      paras.find((p) => p.toLowerCase().includes(keyword.toLowerCase())) ?? null;
-
-    const currentRaw = find('Esama pagrindinė žemės naudojimo paskirtis');
-    const requestedRaw = find('Pageidaujama pagrindinė žemės naudojimo paskirtis');
-    const periodRaw = find('Prašymas viešinamas');
-
-    const stripLabel = (s: string | null, label: string) =>
-      s ? s.replace(new RegExp(`.*${label}[^:]*:\\s*`, 'i'), '').trim() : null;
-
-    const currentUse = stripLabel(currentRaw, 'Esama pagrindinė žemės naudojimo paskirtis.*?būdas');
     const requestedUse = stripLabel(
-      requestedRaw,
+      requestedEl?.text ?? null,
       'Pageidaujama pagrindinė žemės naudojimo paskirtis.*?būdas',
     );
 
     let commentPeriod: string | null = null;
     let commentEndDate: string | null = null;
-    if (periodRaw) {
+    const periodText = periodEl?.text ?? null;
+    if (periodText) {
       const LT_MONTHS: Record<string, string> = {
         sausio: '01',
         vasario: '02',
@@ -198,7 +192,7 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
         `(\\d{4})\\s+m\\.\\s+(${Object.keys(LT_MONTHS).join('|')})\\s+(\\d{1,2})\\s+d`,
         'gi',
       );
-      const ltDates = [...periodRaw.matchAll(LT_DATE_RE)].map(
+      const ltDates = [...periodText.matchAll(LT_DATE_RE)].map(
         (m) => `${m[1]}-${LT_MONTHS[m[2].toLowerCase()]}-${m[3].padStart(2, '0')}`,
       );
       if (ltDates.length >= 2) {
