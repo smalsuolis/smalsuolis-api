@@ -393,9 +393,15 @@ async function checkIntegrationFailures(
   // treat the old error as resolved.
   const failing = (data.apps ?? []).filter((a) => {
     if (!a.lastRunError) return false;
-    if (a.lastUpdate && a.lastRunAt && new Date(a.lastUpdate) > new Date(a.lastRunAt)) {
+    // Events fresher than staleness threshold → integration is running fine.
+    if (
+      a.lastUpdate &&
+      now.getTime() - new Date(a.lastUpdate).getTime() < config.stalenessThresholdMs
+    )
       return false;
-    }
+    // Events fresher than the recorded error → cron ran again successfully since the failure.
+    if (a.lastUpdate && (!a.lastRunAt || new Date(a.lastUpdate) > new Date(a.lastRunAt)))
+      return false;
     return true;
   });
 
@@ -622,7 +628,19 @@ export async function manualIntegrationsStatus(): Promise<string> {
     let ageLabel: string;
     let countLabel: string;
 
-    if (app.lastRunError) {
+    // If events are fresher than the recorded error (or fresher than lastRunAt),
+    // the integration ran successfully since the failure — treat as healthy.
+    // This compensates for recordRunSuccess/recordRunFailure silently failing to
+    // update the apps row when apps.update times out on prod.
+    const eventsAreFresh =
+      app.lastUpdate &&
+      now.getTime() - new Date(app.lastUpdate).getTime() < config.stalenessThresholdMs;
+    const errorSuperseededByFreshEvents =
+      app.lastRunError &&
+      app.lastUpdate &&
+      (!app.lastRunAt || new Date(app.lastUpdate) > new Date(app.lastRunAt));
+
+    if (app.lastRunError && !eventsAreFresh && !errorSuperseededByFreshEvents) {
       trailing = '  🚨';
       ageLabel = 'ERR';
       countLabel = '—';
@@ -647,10 +665,18 @@ export async function manualIntegrationsStatus(): Promise<string> {
     );
   });
 
-  // If any integration errored, show the full error message below the table
-  // (the table itself only has room for a marker).
+  // Show full error message below the table only for genuinely broken integrations
+  // (not ones where events are fresher than the recorded error).
   const errors = apps
-    .filter((a) => a.lastRunError)
+    .filter((a) => {
+      if (!a.lastRunError) return false;
+      const fresh =
+        a.lastUpdate &&
+        now.getTime() - new Date(a.lastUpdate).getTime() < config.stalenessThresholdMs;
+      const superseded =
+        a.lastUpdate && (!a.lastRunAt || new Date(a.lastUpdate) > new Date(a.lastRunAt));
+      return !fresh && !superseded;
+    })
     .map((a) => `🚨 *${a.app}* — \`${a.lastRunError}\``);
 
   return [
