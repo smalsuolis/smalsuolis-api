@@ -54,9 +54,7 @@ const APPS = {
     name: 'Žemės paskirties keitimas (Vilnius)',
     description:
       'Vilniaus miesto savivaldybės skelbiami prašymai keisti žemės sklypo paskirtį (viešo aptarimo etape)',
-    // News / megaphone icon — distinguishes from the other land-planning app
-    // which uses a map icon and arrives post-approval.
-    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="9" height="14" rx="1"/><rect x="11" y="3" width="11" height="18" rx="1"/><path d="M5 10h3M5 14h3M14 6h4M14 10h4M14 14h4"/></svg>',
   },
 };
 
