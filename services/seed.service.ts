@@ -51,7 +51,7 @@ const APPS = {
   },
   [APP_KEYS.savivaldybesZemetvarkaVilnius]: {
     type: APP_TYPE[APP_KEYS.savivaldybesZemetvarkaVilnius],
-    name: 'Planuojamas žemės paskirties keitimas (Vilnius)',
+    name: 'Žemės paskirties keitimas (Vilnius)',
     description:
       'Vilniaus miesto savivaldybės skelbiami prašymai keisti žemės sklypo paskirtį (viešo aptarimo etape)',
     // News / megaphone icon — distinguishes from the other land-planning app
