@@ -232,6 +232,7 @@ export default class EventsService extends moleculer.Service {
       basePath: '/stats',
     },
     auth: EndpointType.PUBLIC,
+    timeout: 0,
   })
   async stats(ctx: Context<{ query: any; noCache?: boolean }>) {
     const cacheKey = JSON.stringify(ctx.params.query ?? null);

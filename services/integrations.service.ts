@@ -52,6 +52,7 @@ export default class IntegrationsService extends moleculer.Service {
       path: '/last-update',
     },
     auth: EndpointType.PUBLIC,
+    timeout: 0,
   })
   async getLastUpdate(ctx: Context<{ noCache?: boolean }>): Promise<IntegrationsStats> {
     if (this.cachedStats && Date.now() < this.cacheExpiry && !ctx.params.noCache) {
