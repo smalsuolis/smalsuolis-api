@@ -369,7 +369,7 @@ export async function runStalenessCheck(bot: Telegraf): Promise<void> {
 
   let data: LastUpdateResponse;
   try {
-    data = await fetchJson<LastUpdateResponse>(url, config.livenessRequestTimeoutMs);
+    data = await fetchJson<LastUpdateResponse>(url, config.stalenessRequestTimeoutMs);
   } catch (err: any) {
     log.error('[watchdog] staleness fetch failed:', err?.message ?? err);
     return;
@@ -588,7 +588,7 @@ export async function manualIntegrationsStatus(): Promise<string> {
   try {
     data = await fetchJson<LastUpdateResponse>(
       `${config.apiBaseUrl}/integrations/last-update?noCache=true`,
-      config.livenessRequestTimeoutMs,
+      config.stalenessRequestTimeoutMs,
     );
   } catch (err: any) {
     return [

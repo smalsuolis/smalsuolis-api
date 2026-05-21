@@ -26,6 +26,9 @@ export const config = {
   livenessIntervalMs: Number(process.env.WATCHDOG_LIVENESS_INTERVAL_MS ?? 150_000),
   livenessFailuresBeforeAlert: Number(process.env.WATCHDOG_LIVENESS_FAILURES ?? 2),
   livenessRequestTimeoutMs: Number(process.env.WATCHDOG_LIVENESS_TIMEOUT_MS ?? 10_000),
+  stalenessRequestTimeoutMs: Number(
+    process.env.WATCHDOG_STALENESS_REQUEST_TIMEOUT_MS ?? 3 * 60 * 1000,
+  ),
   stalenessIntervalMs: Number(process.env.WATCHDOG_STALENESS_INTERVAL_MS ?? 60 * 60 * 1000),
   stalenessThresholdMs: Number(
     process.env.WATCHDOG_STALENESS_THRESHOLD_MS ?? 7 * 24 * 60 * 60 * 1000,
