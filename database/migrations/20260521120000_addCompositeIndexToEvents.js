@@ -1,3 +1,5 @@
+exports.config = { transaction: false };
+
 exports.up = async (knex) => {
   await knex.raw(`
     CREATE INDEX CONCURRENTLY IF NOT EXISTS events_appid_updatedat_deletedat_idx
