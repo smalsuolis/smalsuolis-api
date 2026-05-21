@@ -230,6 +230,10 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
       this.broker.logger.info(`Statiniai sync progress: ${progress.text}`);
     } while (response?._data?.length);
 
+    if (stats.total === 0) {
+      throw new Error('infostatyba API returned 0 items — aborting to preserve existing events');
+    }
+
     await this.cleanupInvalidEvents(ctx, apps);
 
     await this.recordRunSuccess(ctx, apps);

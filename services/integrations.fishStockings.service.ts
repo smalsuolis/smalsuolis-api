@@ -128,6 +128,12 @@ export default class IntegrationsFishStockingsService extends moleculer.Service 
       },
     );
 
+    if (!response || (response as any[]).length === 0) {
+      throw new Error(
+        'empty response from fish stocking API — aborting to preserve existing events',
+      );
+    }
+
     for (let entry of response as any[]) {
       // Validate coordinates before processing
       if (
