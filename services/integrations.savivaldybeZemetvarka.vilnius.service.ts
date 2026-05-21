@@ -86,6 +86,14 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
 
     try {
       const items = await this.scrapeListing(ctx, limit);
+
+      // If the scrape returned nothing (proxy error, site down, etc.) do NOT
+      // proceed to cleanup — that would delete all existing events. Treat it
+      // as a failed run instead.
+      if (items.length === 0 && !limit) {
+        throw new Error('scrape returned 0 items — aborting to preserve existing events');
+      }
+
       const itemsWithGeom = await this.attachGeometries(items);
 
       const events: Partial<Event>[] = itemsWithGeom.map((item) => ({
