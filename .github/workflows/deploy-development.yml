@@ -9,7 +9,7 @@ jobs:
   deploy-development:
     name: Deploy development
     environment: development
-    runs-on: ubuntu-latest
+    runs-on: am-github-runner
     timeout-minutes: 10
     permissions:
       contents: read
