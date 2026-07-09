@@ -33,6 +33,13 @@ interface AppLastUpdate {
   appKey: string;
   appType: string;
   lastUpdate: string | null;
+  // Real-freshness signals (may be absent if the API predates them — we fall
+  // back to lastUpdate then). newestEventAt = newest event date (MAX startAt);
+  // lastCreatedAt = last genuine insert (MAX createdAt). Unlike lastUpdate,
+  // these are NOT bumped when the cron re-touches unchanged rows, so they
+  // detect a stalled upstream feed that keeps re-serving the same old records.
+  newestEventAt?: string | null;
+  lastCreatedAt?: string | null;
   eventCount: number;
   lastUpdateCount: number;
   lastRunAt: string | null;
@@ -380,6 +387,33 @@ export async function runStalenessCheck(bot: Telegraf): Promise<void> {
   await checkStaleness(bot, data, now);
 }
 
+// True freshness age of an app, in ms since `now`. Keyed off the REAL data
+// signals (newest event date and last genuine insert), taking whichever is
+// STALER — so an app is only "fresh" if it has both recent-dated events AND a
+// recent insert. This is the fix for the blind spot where the nightly cron
+// re-touches the same old rows (bumping updatedAt/`lastUpdate`) and made a
+// weeks-old upstream stall look fresh. Falls back to lastUpdate when the API
+// doesn't expose the new fields (version skew during a rolling deploy).
+// Returns null if the app has never received any data.
+function freshnessAgeMs(app: AppLastUpdate, now: Date): number | null {
+  const times: number[] = [];
+  if (app.newestEventAt) times.push(new Date(app.newestEventAt).getTime());
+  if (app.lastCreatedAt) times.push(new Date(app.lastCreatedAt).getTime());
+  // Fallback only when neither real-freshness field is present.
+  if (times.length === 0 && app.lastUpdate) times.push(new Date(app.lastUpdate).getTime());
+  if (times.length === 0) return null;
+  // Staler of the signals = the OLDEST timestamp = the LARGEST age.
+  const oldest = Math.min(...times);
+  return now.getTime() - oldest;
+}
+
+// Staleness threshold for a given app — a per-integration override for bursty
+// sources (see config), else the daily default. Keeps normal quiet spells on
+// low-volume feeds from paging while still catching daily feeds quickly.
+function thresholdFor(app: AppLastUpdate): number {
+  return config.stalenessThresholdByAppKeyMs[app.appKey] ?? config.stalenessThresholdMs;
+}
+
 async function checkIntegrationFailures(
   bot: Telegraf,
   data: LastUpdateResponse,
@@ -393,14 +427,15 @@ async function checkIntegrationFailures(
   // treat the old error as resolved.
   const failing = (data.apps ?? []).filter((a) => {
     if (!a.lastRunError) return false;
-    // Events fresher than staleness threshold → integration is running fine.
-    if (
-      a.lastUpdate &&
-      now.getTime() - new Date(a.lastUpdate).getTime() < config.stalenessThresholdMs
-    )
-      return false;
-    // Events fresher than the recorded error → cron ran again successfully since the failure.
-    if (a.lastUpdate && (!a.lastRunAt || new Date(a.lastUpdate) > new Date(a.lastRunAt)))
+    const ageMs = freshnessAgeMs(a, now);
+    // Genuinely fresh data (new-dated events AND a recent insert) → the
+    // integration is doing real work; treat the recorded error as resolved.
+    // Uses real-freshness rather than lastUpdate, which the cron keeps warm by
+    // re-touching stale rows and which previously masked persistent failures.
+    if (ageMs !== null && ageMs < thresholdFor(a)) return false;
+    // A genuine insert newer than the recorded error → the cron ran again
+    // successfully since the failure, so bookkeeping is just stale.
+    if (a.lastCreatedAt && (!a.lastRunAt || new Date(a.lastCreatedAt) > new Date(a.lastRunAt)))
       return false;
     return true;
   });
@@ -456,18 +491,16 @@ async function checkIntegrationFailures(
 }
 
 async function checkStaleness(bot: Telegraf, data: LastUpdateResponse, now: Date): Promise<void> {
-  const threshold = config.stalenessThresholdMs;
-
   // Skip apps that have never received data — that's a fresh-DB / setup state,
   // not a breakage, so it shouldn't page anyone. Only alert when data EXISTED
-  // and has since gone stale.
+  // and has since gone stale. Age is keyed off real freshness (newest event
+  // date / last genuine insert), NOT lastUpdate — the cron re-touches old rows
+  // every night, which kept lastUpdate warm and hid weeks-long upstream stalls.
+  // Each app is compared to its own threshold (bursty sources get a longer one).
   const stale = (data.apps ?? [])
-    .filter((app) => app.lastUpdate)
-    .map((app) => ({
-      app,
-      ageMs: now.getTime() - new Date(app.lastUpdate!).getTime(),
-    }))
-    .filter(({ ageMs }) => ageMs > threshold)
+    .map((app) => ({ app, ageMs: freshnessAgeMs(app, now) }))
+    .filter((x): x is { app: AppLastUpdate; ageMs: number } => x.ageMs !== null)
+    .filter(({ app, ageMs }) => ageMs > thresholdFor(app))
     .sort((a, b) => b.ageMs - a.ageMs);
 
   if (stale.length === 0) {
@@ -476,11 +509,7 @@ async function checkStaleness(bot: Telegraf, data: LastUpdateResponse, now: Date
 
     const delivered = await broadcast(
       bot,
-      [
-        `✅ *All integrations fresh again*`,
-        `_${formatTimestamp(now)}_`,
-        `_stale threshold: ${formatDuration(threshold)}_`,
-      ].join('\n'),
+      [`✅ *All integrations fresh again*`, `_${formatTimestamp(now)}_`].join('\n'),
     );
     if (delivered) {
       clearAlert('staleness');
@@ -511,7 +540,6 @@ async function checkStaleness(bot: Telegraf, data: LastUpdateResponse, now: Date
   const msg = [
     `⚠️ *Stale integrations (${stale.length})*`,
     `_${formatTimestamp(now)}_`,
-    `_stale threshold: ${formatDuration(threshold)}_`,
     '',
     ...lines,
   ].join('\n');
@@ -599,10 +627,9 @@ export async function manualIntegrationsStatus(): Promise<string> {
     ].join('\n');
   }
 
-  const threshold = config.stalenessThresholdMs;
   const apps = [...(data.apps ?? [])].sort((a, b) => {
-    const aAge = a.lastUpdate ? now.getTime() - new Date(a.lastUpdate).getTime() : Infinity;
-    const bAge = b.lastUpdate ? now.getTime() - new Date(b.lastUpdate).getTime() : Infinity;
+    const aAge = freshnessAgeMs(a, now) ?? Infinity;
+    const bAge = freshnessAgeMs(b, now) ?? Infinity;
     return bAge - aAge;
   });
 
@@ -628,30 +655,29 @@ export async function manualIntegrationsStatus(): Promise<string> {
     let ageLabel: string;
     let countLabel: string;
 
-    // If events are fresher than the recorded error (or fresher than lastRunAt),
-    // the integration ran successfully since the failure — treat as healthy.
-    // This compensates for recordRunSuccess/recordRunFailure silently failing to
-    // update the apps row when apps.update times out on prod.
-    const eventsAreFresh =
-      app.lastUpdate &&
-      now.getTime() - new Date(app.lastUpdate).getTime() < config.stalenessThresholdMs;
+    // If real data is fresher than the recorded error (or a genuine insert is
+    // newer than lastRunAt), the integration ran successfully since the failure
+    // — treat as healthy. This compensates for recordRunSuccess/recordRunFailure
+    // silently failing to update the apps row when apps.update times out on prod.
+    // Uses real-freshness (not lastUpdate, which the cron keeps warm).
+    const freshAge = freshnessAgeMs(app, now);
+    const eventsAreFresh = freshAge !== null && freshAge < thresholdFor(app);
     const errorSuperseededByFreshEvents =
       app.lastRunError &&
-      app.lastUpdate &&
-      (!app.lastRunAt || new Date(app.lastUpdate) > new Date(app.lastRunAt));
+      app.lastCreatedAt &&
+      (!app.lastRunAt || new Date(app.lastCreatedAt) > new Date(app.lastRunAt));
 
     if (app.lastRunError && !eventsAreFresh && !errorSuperseededByFreshEvents) {
       trailing = '  🚨';
       ageLabel = 'ERR';
       countLabel = '—';
-    } else if (!app.lastUpdate) {
+    } else if (freshAge === null) {
       ageLabel = '—';
       countLabel = '0';
     } else {
-      const ageMs = now.getTime() - new Date(app.lastUpdate).getTime();
-      const isStale = ageMs > threshold;
+      const isStale = freshAge > thresholdFor(app);
       trailing = isStale ? '  ⚠️' : '';
-      ageLabel = formatAgeShort(ageMs);
+      ageLabel = formatAgeShort(freshAge);
       countLabel = String(app.lastUpdateCount ?? 0);
     }
 
@@ -670,18 +696,17 @@ export async function manualIntegrationsStatus(): Promise<string> {
   const errors = apps
     .filter((a) => {
       if (!a.lastRunError) return false;
-      const fresh =
-        a.lastUpdate &&
-        now.getTime() - new Date(a.lastUpdate).getTime() < config.stalenessThresholdMs;
+      const ageMs = freshnessAgeMs(a, now);
+      const fresh = ageMs !== null && ageMs < thresholdFor(a);
       const superseded =
-        a.lastUpdate && (!a.lastRunAt || new Date(a.lastUpdate) > new Date(a.lastRunAt));
+        a.lastCreatedAt && (!a.lastRunAt || new Date(a.lastCreatedAt) > new Date(a.lastRunAt));
       return !fresh && !superseded;
     })
     .map((a) => `🚨 *${a.app}* — \`${a.lastRunError}\``);
 
   return [
     `📊 *Integration freshness*`,
-    `_${formatTimestamp(now)} — stale threshold: ${formatDuration(threshold)}_`,
+    `_${formatTimestamp(now)}_`,
     '',
     codeBlock([header, sep, ...rows].join('\n')),
     ...(errors.length ? ['', ...errors] : []),

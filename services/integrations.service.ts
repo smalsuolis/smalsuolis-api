@@ -12,6 +12,13 @@ interface LastUpdateInfo {
   appKey: string;
   appType: string;
   lastUpdate: Date | null;
+  // Freshness of genuinely new data, as opposed to `lastUpdate` (= MAX
+  // updatedAt) which the cron re-touches on every run even when nothing new
+  // arrives. `newestEventAt` = newest real-world event date (MAX startAt);
+  // `lastCreatedAt` = last time a new row was actually inserted (MAX createdAt).
+  // These are what the watchdog keys staleness off — see checks.ts.
+  newestEventAt: Date | null;
+  lastCreatedAt: Date | null;
   eventCount: number;
   lastUpdateCount: number;
   lastRunAt: Date | null;
@@ -77,6 +84,11 @@ export default class IntegrationsService extends moleculer.Service {
         'apps.last_run_error as lastRunError',
       )
       .max('events.updatedAt as lastUpdate')
+      // Real-freshness signals for the watchdog (see LastUpdateInfo). startAt =
+      // event's real-world date; createdAt = when the row was first inserted.
+      // Neither is bumped by the cron re-touching existing rows, unlike updatedAt.
+      .max('events.startAt as newestEventAt')
+      .max('events.createdAt as lastCreatedAt')
       .count('events.id as eventCount')
       .from('apps')
       .leftJoin('events', function () {
@@ -128,6 +140,8 @@ export default class IntegrationsService extends moleculer.Service {
       appKey: row.appKey,
       appType: APP_TYPE[row.appKey] || 'unknown',
       lastUpdate: row.lastUpdate ? new Date(row.lastUpdate) : null,
+      newestEventAt: row.newestEventAt ? new Date(row.newestEventAt) : null,
+      lastCreatedAt: row.lastCreatedAt ? new Date(row.lastCreatedAt) : null,
       eventCount: parseInt(row.eventCount, 10),
       lastUpdateCount: lastUpdateCountMap.get(row.appId) || 0,
       lastRunAt: row.lastRunAt ? new Date(row.lastRunAt) : null,

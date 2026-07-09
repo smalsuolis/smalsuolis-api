@@ -30,9 +30,22 @@ export const config = {
     process.env.WATCHDOG_STALENESS_REQUEST_TIMEOUT_MS ?? 3 * 60 * 1000,
   ),
   stalenessIntervalMs: Number(process.env.WATCHDOG_STALENESS_INTERVAL_MS ?? 60 * 60 * 1000),
+  // Default staleness threshold for daily-updating integrations (infostatyba,
+  // izuvinimas, zemetvarkosPlanavimas). These reliably receive new data every
+  // 1–5 days, so 8d flags a real break with a little margin.
   stalenessThresholdMs: Number(
-    process.env.WATCHDOG_STALENESS_THRESHOLD_MS ?? 7 * 24 * 60 * 60 * 1000,
+    process.env.WATCHDOG_STALENESS_THRESHOLD_MS ?? 8 * 24 * 60 * 60 * 1000,
   ),
+  // Per-integration overrides for sources that legitimately publish in bursts,
+  // so their normal quiet spells don't page anyone. Thresholds picked from each
+  // source's observed max healthy gap (see PR): miskoKirtimai tops out ~7d →
+  // 12d; savivaldybe-vilnius (Vilnius land-use notices) tops out ~13d → 21d.
+  // Freshness is measured off real data (newest event / last insert), not the
+  // cron-warmed lastUpdate — see freshnessAgeMs in checks.ts.
+  stalenessThresholdByAppKeyMs: {
+    miskoKirtimai: 12 * 24 * 60 * 60 * 1000,
+    'savivaldybesZemetvarka-vilnius': 21 * 24 * 60 * 60 * 1000,
+  } as Record<string, number>,
   alertCooldownMs: Number(process.env.WATCHDOG_ALERT_COOLDOWN_MS ?? 6 * 60 * 60 * 1000),
   livenessRepeatIntervalMs: Number(process.env.WATCHDOG_LIVENESS_REPEAT_MS ?? 30 * 60 * 1000),
   displayTimezone: process.env.WATCHDOG_TIMEZONE ?? 'Europe/Vilnius',
