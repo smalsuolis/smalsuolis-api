@@ -1,7 +1,7 @@
 'use strict';
 
 import moleculer, { Context } from 'moleculer';
-import { Action, Method, Service } from 'moleculer-decorators';
+import { Action, Event, Method, Service } from 'moleculer-decorators';
 import PostgisMixin, { intersectsQuery } from 'moleculer-postgis';
 import DbConnection from '../mixins/database.mixin';
 import {
@@ -452,5 +452,42 @@ export default class EventsService extends moleculer.Service {
     params = this.paramsFieldNameConversion(params);
 
     return parseToJsonIfNeeded(params.query) || {};
+  }
+
+  // The stats window the public homepage requests. Must be byte-identical to
+  // what the web client sends (api.getStats wraps the ALL_TIME range in
+  // `{ startAt }` and JSON-stringifies it) so warming here populates the exact
+  // same cacheKey the incoming request will look up.
+  private readonly HOMEPAGE_STATS_QUERY = JSON.stringify({
+    startAt: { $gte: '2000-01-01 00:00', $lt: '2099-12-31 23:59' },
+  });
+
+  // Recompute the homepage stats through the real action so the cache is
+  // populated under the request's cacheKey. Best-effort: a failure here must
+  // never take the service down — the next request just recomputes lazily.
+  @Method
+  async warmHomepageStats() {
+    try {
+      await this.actions.stats({ query: this.HOMEPAGE_STATS_QUERY, noCache: true });
+    } catch (err) {
+      this.logger.warn('Failed to warm homepage stats cache', err);
+    }
+  }
+
+  // Warm on boot so the very first homepage load is never cold.
+  async started() {
+    await this.warmHomepageStats();
+  }
+
+  // Stats only change when new events land, which happens once per day as the
+  // integration syncs finish (infostatyba 00:00 → savivaldybė 06:00). On that
+  // signal, drop the stale cache and immediately recompute the homepage window
+  // so it's warm again the instant the sync completes — no lazy cold-hit, no
+  // time-based guessing. Firing after each of the several nightly syncs is
+  // harmless: each just refreshes the same entry.
+  @Event({ name: 'integrations.sync.finished' })
+  async onIntegrationsSyncFinished() {
+    this.statsCache.clear();
+    await this.warmHomepageStats();
   }
 }
