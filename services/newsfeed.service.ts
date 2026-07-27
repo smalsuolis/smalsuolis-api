@@ -33,6 +33,9 @@ const sender = 'esu@smalsuolis.lt';
       cronTime: '0 12 * * *',
       async onTick() {
         await this.call('newsfeed.handleEmails', { frequency: Frequency.DAY });
+        // "Visi" subscribers are sent on the same daily tick; the difference is
+        // the date window, not the cadence (see getDateByFrequency).
+        await this.call('newsfeed.handleEmails', { frequency: Frequency.ALL });
       },
       timeZone: 'Europe/Vilnius',
     },
@@ -49,6 +52,14 @@ const sender = 'esu@smalsuolis.lt';
       cronTime: '0 15 1 * *',
       async onTick() {
         await this.call('newsfeed.handleEmails', { frequency: Frequency.MONTH });
+      },
+      timeZone: 'Europe/Vilnius',
+    },
+    {
+      name: 'yearlyEmails',
+      cronTime: '0 15 1 1 *',
+      async onTick() {
+        await this.call('newsfeed.handleEmails', { frequency: Frequency.YEAR });
       },
       timeZone: 'Europe/Vilnius',
     },

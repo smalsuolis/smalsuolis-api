@@ -27,6 +27,14 @@ export function getDateByFrequency(frequency: Frequency): Date {
     case Frequency.MONTH: {
       return new Date(currentDate.setMonth(currentDate.getMonth() - 1));
     }
+    case Frequency.YEAR: {
+      return new Date(currentDate.setFullYear(currentDate.getFullYear() - 1));
+    }
+    case Frequency.ALL: {
+      // "Visi" rides the daily cron but with no meaningful lower bound, so a
+      // send includes everything matching the subscription.
+      return new Date(0);
+    }
     default:
       return new Date();
   }
