@@ -95,10 +95,16 @@ export enum Frequency {
   DAY = 'DAY',
   WEEK = 'WEEK',
   MONTH = 'MONTH',
+  YEAR = 'YEAR',
+  // "Visi": everything matching the subscription, delivered on the daily cron
+  // with no date window (see getDateByFrequency).
+  ALL = 'ALL',
 }
 
 export const FrequencyLabel = {
   [Frequency.DAY]: 'Vakar',
   [Frequency.WEEK]: 'Prėjusią savaitę',
   [Frequency.MONTH]: 'Praėjusį mėnesį',
+  [Frequency.YEAR]: 'Praėjusiais metais',
+  [Frequency.ALL]: 'Visi įvykiai',
 };

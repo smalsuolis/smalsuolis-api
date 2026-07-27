@@ -180,6 +180,12 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
         columnName: 'categoryId',
         populate: 'categories.resolve',
       },
+      municipality: {
+        type: 'number',
+        columnType: 'integer',
+        columnName: 'municipalityId',
+        populate: 'municipalities.resolve',
+      },
       ...COMMON_FIELDS,
     },
     scopes: {
@@ -217,6 +223,10 @@ export function applyEventsQueryBySubscriptions(query: QueryObject, subscription
       count: ['applyFilters'],
       get: ['applyFilters'],
       resolve: ['applyFilters'],
+    },
+    after: {
+      create: 'assignMunicipality',
+      update: 'assignMunicipality',
     },
   },
 })
@@ -284,6 +294,18 @@ export default class EventsService extends moleculer.Service {
       .innerJoin('categories', 'events.categoryId', 'categories.id')
       .groupBy('apps.key', 'categories.code');
 
+    // Per-municipality, per-appType breakdown — feeds the "Akyviausi miestai"
+    // cards (top cities with a per-app split). innerJoin on municipalities drops
+    // events with no municipality (geom outside every polygon), matching how
+    // byCategory/byTag exclude unmatched events. Ordered/limited on the web side.
+    const eventsCountByMunicipality = await knex
+      .select('municipalities.name as municipality', 'apps.key as appKey')
+      .count('events.id')
+      .from(eventsQuery.as('events'))
+      .innerJoin('municipalities', 'events.municipalityId', 'municipalities.id')
+      .leftJoin('apps', 'events.appId', 'apps.id')
+      .groupBy('municipalities.name', 'apps.key');
+
     const eventsCountByTagData = await knex
       .select(knex.raw('td.tag_id::numeric'), 'td.tagName')
       .sum({
@@ -332,8 +354,15 @@ export default class EventsService extends moleculer.Service {
           byCategory?: { [key: string]: { count: number } };
         };
       };
+      byMunicipality: {
+        [name: string]: {
+          count: number;
+          byApp: { [appType: string]: number };
+        };
+      };
     } = {
       byApp: {},
+      byMunicipality: {},
       count: 0,
     };
 
@@ -368,6 +397,22 @@ export default class EventsService extends moleculer.Service {
       _.set(stats, path, existingCount + count);
     });
 
+    // byMunicipality: keyed by municipality name; each has a total count plus a
+    // per-appType split (app.key → APP_TYPE, same mapping as byCategory).
+    eventsCountByMunicipality?.forEach((item: { municipality: string; appKey: string; count: any }) => {
+      if (!item.municipality) return;
+      const appType = APP_TYPE[item.appKey];
+      const count = Number(item.count);
+
+      const totalPath = ['byMunicipality', item.municipality, 'count'];
+      _.set(stats, totalPath, _.get(stats, totalPath, 0) + count);
+
+      if (appType) {
+        const appPath = ['byMunicipality', item.municipality, 'byApp', appType];
+        _.set(stats, appPath, _.get(stats, appPath, 0) + count);
+      }
+    });
+
     eventsCountByTagData?.forEach((item) => {
       const tag = tagsById[item.tagId];
       const count = Number(item.count || 0);
@@ -395,6 +440,65 @@ export default class EventsService extends moleculer.Service {
     this.statsCache.set(cacheKey, { data: stats, expiry: Date.now() + this.STATS_CACHE_TTL_MS });
 
     return stats;
+  }
+
+  // Events within `radius` metres of a point (lng/lat, EPSG:4326 — as returned
+  // by the address suggest endpoint). Powers the map's address-lookup popup:
+  // returns the total count in the circle plus the most recent `limit` events.
+  // Uses ST_DWithin on events.geom (SRID 3346, GIST-indexed) after projecting
+  // the point, so it uses the spatial index. Public — the map page is public.
+  @Action({
+    rest: {
+      method: 'GET',
+      path: '/near',
+      basePath: '/events',
+    },
+    auth: EndpointType.PUBLIC,
+    params: {
+      lng: { type: 'number', convert: true },
+      lat: { type: 'number', convert: true },
+      radius: { type: 'number', convert: true, optional: true, default: 2000 },
+      limit: { type: 'number', convert: true, optional: true, default: 5 },
+    },
+    timeout: 30 * 1000,
+  })
+  async near(
+    ctx: Context<{ lng: number; lat: number; radius?: number; limit?: number }>,
+  ) {
+    const { lng, lat } = ctx.params;
+    const radius = ctx.params.radius ?? 2000;
+    const limit = ctx.params.limit ?? 5;
+
+    const adapter = await this.getAdapter(ctx);
+    const knex: Knex = adapter.client;
+
+    // Point in the events' CRS (3346). `pt` is reused by both queries.
+    const pointSql = `ST_Transform(ST_SetSRID(ST_MakePoint(?, ?), 4326), ${LKS_SRID})`;
+
+    const countResult = await knex.raw(
+      `SELECT count(*)::int AS count
+       FROM events
+       WHERE deleted_at IS NULL
+         AND geom IS NOT NULL
+         AND ST_DWithin(geom, ${pointSql}, ?)`,
+      [lng, lat, radius],
+    );
+    const count = countResult.rows?.[0]?.count ?? 0;
+
+    const eventsResult = await knex.raw(
+      `SELECT e.id, e.name, e.start_at AS "startAt", e.url, e.app_id AS "appId",
+              apps.name AS "appName", apps.key AS "appKey"
+       FROM events e
+       LEFT JOIN apps ON apps.id = e.app_id
+       WHERE e.deleted_at IS NULL
+         AND e.geom IS NOT NULL
+         AND ST_DWithin(e.geom, ${pointSql}, ?)
+       ORDER BY e.start_at DESC
+       LIMIT ?`,
+      [lng, lat, radius, limit],
+    );
+
+    return { count, radius, events: eventsResult.rows ?? [] };
   }
 
   @Method
@@ -452,6 +556,42 @@ export default class EventsService extends moleculer.Service {
     params = this.paramsFieldNameConversion(params);
 
     return parseToJsonIfNeeded(params.query) || {};
+  }
+
+  // Derive municipalityId from the event's geom on create/update, so newly
+  // ingested events stay assigned without a periodic backfill. Runs as an AFTER
+  // hook: by this point the geom is already stored in the events table in SRID
+  // 3346, so we reuse the exact same ST_PointOnSurface join as the one-off
+  // backfill — no need to replicate the postgis mixin's incoming-CRS handling
+  // (integrations pass GeoJSON in EPSG:4326, sometimes as a Feature). Matches
+  // the municipality whose polygon contains the geom's representative point, so
+  // a POLYGON straddling a border maps to exactly one municipality. Unmatched or
+  // missing geoms stay null, which stats simply omit. Best-effort: a failure
+  // here must never break event ingestion, so the created/updated entity is
+  // always returned unchanged and errors are only logged.
+  @Method
+  async assignMunicipality(ctx: Context, res: any) {
+    const id = res?.id;
+    if (!id) return res;
+
+    try {
+      const adapter = await this.getAdapter(ctx);
+      const knex: Knex = adapter.client;
+      await knex.raw(
+        `UPDATE events e
+         SET municipality_id = (
+           SELECT m.id
+           FROM municipalities m
+           WHERE ST_Intersects(m.geom, ST_PointOnSurface(e.geom))
+           LIMIT 1
+         )
+         WHERE e.id = ? AND e.geom IS NOT NULL`,
+        [id],
+      );
+    } catch (err) {
+      this.logger.warn('[events.assignMunicipality] lookup failed', err);
+    }
+    return res;
   }
 
   // The stats window the public homepage requests. Must be byte-identical to

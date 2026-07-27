@@ -245,9 +245,20 @@ export default class ApiService extends moleculer.Service {
   ): Promise<unknown> {
     const actionAuthType = req.$action.auth;
     const auth = req.headers.authorization;
-    ctx.meta.app = await ctx.call('auth.apps.resolveToken');
+    const isAnonymousPublic = actionAuthType === EndpointType.PUBLIC && !auth;
 
-    if (actionAuthType === EndpointType.PUBLIC && !auth) {
+    // Resolve the calling app. For an anonymous PUBLIC request this is only
+    // informational, so don't let an auth-service outage turn a public endpoint
+    // into a 500 — degrade to no app context instead. Authenticated flows still
+    // surface the error, since they genuinely depend on it.
+    try {
+      ctx.meta.app = await ctx.call('auth.apps.resolveToken');
+    } catch (err) {
+      if (!isAnonymousPublic) throw err;
+      ctx.meta.app = undefined;
+    }
+
+    if (isAnonymousPublic) {
       return Promise.resolve(null);
     }
 

@@ -18,6 +18,22 @@ export interface AddressSuggestion {
   geometry: any;
 }
 
+// Split free-text input into the parts the registry can filter on.
+// "Vilniaus g. 2, Vilnius" → { street: 'Vilniaus g.', houseNumber: '2' }
+// "Gedimino"              → { street: 'Gedimino',   houseNumber: undefined }
+// Everything after the first comma is a locality hint we don't filter on — the
+// registry has no combined free-text search, and including it would match no
+// street name (causing a very slow full scan).
+export const parseAddressInput = (input: string): { street: string; houseNumber?: string } => {
+  const beforeComma = input.split(',')[0].trim();
+  // Trailing token starting with a digit is the plot/building number.
+  const match = beforeComma.match(/^(.*?)[\s]+(\d[\w-]*)$/);
+  if (match) {
+    return { street: match[1].trim(), houseNumber: match[2] };
+  }
+  return { street: beforeComma };
+};
+
 // Build a human-readable label: "<street full name> <building no>, <municipality>".
 // Falls back to residential area when there's no street (rural addresses).
 const buildLabel = (a: Address): string => {
@@ -56,15 +72,28 @@ export default class BoundariesService extends moleculer.Service {
       return cached.data;
     }
 
+    // Split the input into a street part and an optional house number, e.g.
+    // "Vilniaus g. 2, Vilnius" → street "Vilniaus g.", number "2".
+    // Passing the whole raw string as a street-name `contains` matches nothing
+    // once a house number is typed, and makes the registry do a very slow scan
+    // (30s+ timeouts), so we always query the structured fields instead.
+    const { street, houseNumber } = parseAddressInput(search);
+
     let items: Address[] = [];
     try {
       const data = await addressesSearch({
         requestBody: {
           // OR across street-name and residential-area-name so both urban and
-          // rural inputs match. `contains` is case-insensitive.
+          // rural inputs match. `contains` is case-insensitive. When a house
+          // number is present, narrow by it too.
           filters: [
-            { streets: { name: { contains: search } } },
-            { residential_areas: { name: { contains: search } } },
+            {
+              streets: { name: { contains: street } },
+              ...(houseNumber
+                ? { addresses: { plot_or_building_number: { starts: houseNumber } } }
+                : null),
+            },
+            { residential_areas: { name: { contains: street } } },
           ],
         },
         size: 8,
