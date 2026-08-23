@@ -394,6 +394,9 @@ export default class SubscriptionsService extends moleculer.Service {
         knex.raw(`
           COUNT(
             CASE
+              -- ALL delivers everything on the daily cron, so it has no cutoff
+              -- to be newer than; every matching event counts.
+              WHEN s.frequency = 'ALL' THEN 1
               WHEN e.created_at >= (
                 CURRENT_DATE AT TIME ZONE 'UTC' - (
                   SELECT
@@ -401,6 +404,7 @@ export default class SubscriptionsService extends moleculer.Service {
                       WHEN s.frequency = 'DAY' THEN INTERVAL '1 day'
                       WHEN s.frequency = 'WEEK' THEN INTERVAL '1 week'
                       WHEN s.frequency = 'MONTH' THEN INTERVAL '1 month'
+                      WHEN s.frequency = 'YEAR' THEN INTERVAL '1 year'
                     END
                 )
               ) THEN 1
