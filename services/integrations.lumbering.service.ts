@@ -16,6 +16,29 @@ import { buildLtProxyOpt } from '../utils/lt-proxy';
 // can drop mid-flight — without a retry a single blip costs a full day of data.
 const DOWNLOAD_ATTEMPTS = 3;
 
+// The subset of lkmp-data.geojson this integration actually reads.
+type LumberingProperties = {
+  id: string | number;
+  padalinys: string;
+  girininkija: string;
+  galioja_nuo: string;
+  galioja_iki: string;
+  kvartalas: string;
+  sklypas: string;
+  kertamas_plotas: string | number | null;
+  kirtimo_rusis: string;
+  vyraujantys_medziai: string;
+  atkurimo_budas: string;
+};
+
+type LumberingFeature = {
+  type: string;
+  geometry: { type: string; coordinates: unknown; crs?: string };
+  properties: LumberingProperties;
+};
+
+type LumberingGeojson = { features?: LumberingFeature[] };
+
 @Service({
   name: 'integrations.lumbering',
   settings: {
@@ -75,8 +98,8 @@ export default class IntegrationsLumberingService extends moleculer.Service {
   }
 
   @Method
-  async downloadGeojson(ctx: Context): Promise<any> {
-    const response: any = await ctx.call(
+  async downloadGeojson(ctx: Context): Promise<LumberingGeojson> {
+    const response: stream.Readable = await ctx.call(
       'http.get',
       {
         url: this.settings.zipUrl,
@@ -85,7 +108,7 @@ export default class IntegrationsLumberingService extends moleculer.Service {
       { timeout: 0 },
     );
 
-    return await new Promise((resolve, reject) => {
+    return await new Promise<LumberingGeojson>((resolve, reject) => {
       response.on('error', reject);
       const unzipStream = response.pipe(unzipper.Parse());
       unzipStream.on('error', reject);
@@ -124,16 +147,16 @@ export default class IntegrationsLumberingService extends moleculer.Service {
 
   @Method
   async scrape(ctx: Context<{ limit: number; initial: boolean }>, app: App) {
-    let geojson: any;
+    let geojson: LumberingGeojson | undefined;
     for (let attempt = 1; ; attempt++) {
       try {
         geojson = await this.downloadGeojson(ctx);
         break;
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (attempt >= DOWNLOAD_ATTEMPTS) throw err;
         this.broker.logger.warn(
           `[integrations.lumbering] download attempt ${attempt}/${DOWNLOAD_ATTEMPTS} failed: ${
-            err?.message ?? err
+            err instanceof Error ? err.message : String(err)
           } — retrying`,
         );
         await new Promise((resolve) => setTimeout(resolve, attempt * 5000));
@@ -144,14 +167,14 @@ export default class IntegrationsLumberingService extends moleculer.Service {
       throw new Error('empty geojson — no features field');
     }
 
-    const features: any[] = ctx.params.limit
+    const features: LumberingFeature[] = ctx.params.limit
       ? geojson.features.splice(0, ctx.params.limit)
       : geojson.features;
 
     for (const feature of features) {
       feature.geometry.crs = 'EPSG:4326';
 
-      const ownershipTypesByDigit: any = {
+      const ownershipTypesByDigit: Record<number, string> = {
         1: 'Privati',
         2: 'Valstybinė',
         3: 'Privati',
@@ -199,7 +222,7 @@ export default class IntegrationsLumberingService extends moleculer.Service {
         geom: feature,
         app: app.id,
         isFullDay: true,
-        externalId: feature.properties.id,
+        externalId: String(feature.properties.id),
         tags: tagsIds,
         tagsData,
       };
