@@ -41,11 +41,15 @@ export function buildLtProxyOpt(session?: string) {
   const proxyUrl = process.env.DECODO_PROXY_URL;
 
   if (!proxyUrl) {
-    // Going direct from prod means a foreign IP and a 403 that reads like the
-    // upstream broke, not like missing config. Fail where it is diagnosable.
-    if (process.env.NODE_ENV === 'production') {
+    // Every deployed environment (development included) runs on a foreign host,
+    // so going direct there means a 403 that reads like the upstream broke
+    // rather than like missing config. Fail where it is diagnosable. Only a
+    // developer machine — NODE_ENV=local, or unset — is assumed to sit on a
+    // Lithuanian IP and may talk to the upstream directly.
+    const deployed = !!process.env.NODE_ENV && process.env.NODE_ENV !== 'local';
+    if (deployed) {
       throw new Error(
-        'DECODO_PROXY_URL is not set — refusing to fetch an LT-only upstream directly',
+        `DECODO_PROXY_URL is not set — refusing to fetch an LT-only upstream directly (NODE_ENV=${process.env.NODE_ENV})`,
       );
     }
     return {};
