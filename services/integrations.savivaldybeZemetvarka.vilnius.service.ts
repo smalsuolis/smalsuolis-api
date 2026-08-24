@@ -14,7 +14,7 @@ import { App, APP_KEYS } from './apps.service';
 import { Event, toEventBodyMarkdown } from './events.service';
 import { IntegrationsMixin } from '../mixins/integrations.mixin';
 import { parcelsSearch } from '../utils/boundaries';
-import { buildJumpHttpsOpt } from '../utils/lt-jump';
+import { buildLtProxyOpt } from '../utils/lt-proxy';
 
 interface VilniusArticle {
   currentUse: string | null;
@@ -44,15 +44,15 @@ const ARTICLE_BASE = 'https://vilnius.lt';
 const MAX_PAGES = 50;
 // Fetch articles concurrently in small batches to stay polite.
 const ARTICLE_CONCURRENCY = 5;
+// A run makes hundreds of requests — keep one proxy exit IP for all of them
+// instead of hitting vilnius.lt from a fresh residential IP every time.
+const PROXY_SESSION = 'vilnius';
 
 @Service({
   name: 'integrations.savivaldybeZemetvarka.vilnius',
   settings: {
-    // Listing base: proxy path /vilnius/naujienos, article path /vilnius/naujienos/<slug>.
-    // Direct upstream is used in local dev (LT IP); jump proxy used on Hetzner.
-    baseUrl: process.env.SAVIVALDYBE_JUMP_URL
-      ? `${process.env.SAVIVALDYBE_JUMP_URL}/vilnius`
-      : ARTICLE_BASE,
+    // The proxy tunnels to the real host, so the upstream URL is used as-is.
+    baseUrl: ARTICLE_BASE,
   },
   mixins: [Cron, IntegrationsMixin()],
   crons: [
@@ -129,7 +129,7 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
   async fetchHtml(ctx: Context, url: string): Promise<string> {
     return await ctx.call(
       'http.get',
-      { url, opt: { responseType: 'text', ...buildJumpHttpsOpt() } },
+      { url, opt: { responseType: 'text', ...buildLtProxyOpt(PROXY_SESSION) } },
       { timeout: 30_000 },
     );
   }

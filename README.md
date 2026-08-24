@@ -70,6 +70,22 @@ This will start `redis`, `chrome`, `postgres` (with two databases: `smalsuolis` 
 
 The API will be available at `http://localhost:3000`.
 
+### LT-only upstreams (`DECODO_PROXY_URL`)
+
+`integrations.lumbering` (lkmp.alisas.lt) and `integrations.savivaldybeZemetvarka.vilnius`
+(vilnius.lt) are only reachable from a Lithuanian IP — vilnius.lt answers `403` to
+everything else. Locally no config is needed; the requests go straight out.
+
+Deployed environments must set `DECODO_PROXY_URL` (Decodo residential proxy), or both
+integrations fail their run on purpose rather than silently scraping a `403` page:
+
+```
+DECODO_PROXY_URL=http://user-<subuser>-country-lt:<password>@gate.decodo.com:7000
+```
+
+The `-country-lt` suffix on the username is what pins the exit IP to Lithuania —
+without it Decodo hands out a random country. See [utils/lt-proxy.ts](utils/lt-proxy.ts).
+
 ## Deployment
 
 ### Production

@@ -10,12 +10,39 @@ import stream from 'node:stream';
 
 import { Event, toEventBodyMarkdown } from './events.service';
 import { IntegrationsMixin, IntegrationStats } from '../mixins/integrations.mixin';
-import { buildJumpHttpsOpt } from '../utils/lt-jump';
+import { buildLtProxyOpt } from '../utils/lt-proxy';
+
+// got does not retry streams, and a 48 MB download through a residential proxy
+// can drop mid-flight — without a retry a single blip costs a full day of data.
+const DOWNLOAD_ATTEMPTS = 3;
+
+// The subset of lkmp-data.geojson this integration actually reads.
+type LumberingProperties = {
+  id: string | number;
+  padalinys: string;
+  girininkija: string;
+  galioja_nuo: string;
+  galioja_iki: string;
+  kvartalas: string;
+  sklypas: string;
+  kertamas_plotas: string | number | null;
+  kirtimo_rusis: string;
+  vyraujantys_medziai: string;
+  atkurimo_budas: string;
+};
+
+type LumberingFeature = {
+  type: string;
+  geometry: { type: string; coordinates: unknown; crs?: string };
+  properties: LumberingProperties;
+};
+
+type LumberingGeojson = { features?: LumberingFeature[] };
 
 @Service({
   name: 'integrations.lumbering',
   settings: {
-    zipUrl: process.env.LUMBERING_JUMP_URL || 'https://lkmp.alisas.lt/static/lkmp-data.geojson.zip',
+    zipUrl: 'https://lkmp.alisas.lt/static/lkmp-data.geojson.zip',
     //    zipUrl: 'https://eima.smala.lt/lkmp/static/lkmp-data.geojson.zip',
   },
   mixins: [Cron, IntegrationsMixin()],
@@ -71,17 +98,17 @@ export default class IntegrationsLumberingService extends moleculer.Service {
   }
 
   @Method
-  async scrape(ctx: Context<{ limit: number; initial: boolean }>, app: App) {
-    const response: any = await ctx.call(
+  async downloadGeojson(ctx: Context): Promise<LumberingGeojson> {
+    const response: stream.Readable = await ctx.call(
       'http.get',
       {
         url: this.settings.zipUrl,
-        opt: { isStream: true, ...buildJumpHttpsOpt() },
+        opt: { isStream: true, ...buildLtProxyOpt() },
       },
       { timeout: 0 },
     );
 
-    const geojson: any = await new Promise((resolve, reject) => {
+    return await new Promise<LumberingGeojson>((resolve, reject) => {
       response.on('error', reject);
       const unzipStream = response.pipe(unzipper.Parse());
       unzipStream.on('error', reject);
@@ -116,19 +143,38 @@ export default class IntegrationsLumberingService extends moleculer.Service {
         reject(new Error("zip did not contain 'lkmp-data.geojson'")),
       );
     });
+  }
+
+  @Method
+  async scrape(ctx: Context<{ limit: number; initial: boolean }>, app: App) {
+    let geojson: LumberingGeojson | undefined;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        geojson = await this.downloadGeojson(ctx);
+        break;
+      } catch (err: unknown) {
+        if (attempt >= DOWNLOAD_ATTEMPTS) throw err;
+        this.broker.logger.warn(
+          `[integrations.lumbering] download attempt ${attempt}/${DOWNLOAD_ATTEMPTS} failed: ${
+            err instanceof Error ? err.message : String(err)
+          } — retrying`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, attempt * 5000));
+      }
+    }
 
     if (!geojson?.features) {
       throw new Error('empty geojson — no features field');
     }
 
-    const features: any[] = ctx.params.limit
+    const features: LumberingFeature[] = ctx.params.limit
       ? geojson.features.splice(0, ctx.params.limit)
       : geojson.features;
 
     for (const feature of features) {
       feature.geometry.crs = 'EPSG:4326';
 
-      const ownershipTypesByDigit: any = {
+      const ownershipTypesByDigit: Record<number, string> = {
         1: 'Privati',
         2: 'Valstybinė',
         3: 'Privati',
@@ -176,7 +222,7 @@ export default class IntegrationsLumberingService extends moleculer.Service {
         geom: feature,
         app: app.id,
         isFullDay: true,
-        externalId: feature.properties.id,
+        externalId: String(feature.properties.id),
         tags: tagsIds,
         tagsData,
       };
