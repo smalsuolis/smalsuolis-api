@@ -14,12 +14,19 @@ import { addressesSearch } from '../utils/boundaries';
 import _ from 'lodash';
 import { registerClassifier } from '../utils/classifiers';
 import { INFOSTATYBA_SPEC } from '../utils/classifiers/infostatyba';
+import { assertJsonPayload } from '../utils/upstream-response';
 
 // Register on module load so the spec is available before any service action
 // runs. validateSpec() throws here if the spec is malformed — fail fast at boot.
 registerClassifier(INFOSTATYBA_SPEC);
 
+// get.data.gov.lt can accept a connection and never answer; without a ceiling a
+// single such request hangs the run forever.
+const UPSTREAM_TIMEOUT_MS = 60_000;
+
 const addressCacheKey = 'integrations:infostatyba:addresses';
+const addressCursorKey = 'integrations:infostatyba:addresses:cursor';
+const addressSyncedAtKey = 'integrations:infostatyba:addresses:syncedAt';
 @Service({
   name: 'integrations.infostatyba',
   settings: {
@@ -71,6 +78,8 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
       };
     };
 
+    if (!this.beginExclusiveRun()) return;
+
     const stats: IntegrationStats & InfostatybaIntegrationStats = this.startIntegration();
 
     // Additional props
@@ -87,6 +96,8 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     } catch (err: any) {
       await this.recordRunFailure(ctx, apps, err);
       return this.finishIntegration();
+    } finally {
+      this.endExclusiveRun();
     }
   }
 
@@ -144,13 +155,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     let response: any;
     const startTime = new Date();
     do {
-      response = await this.makeRequestWithRetries(() => {
-        return ctx.call(
-          'http.get',
-          { url: `${url}${selectFieldsQueryStr}${skipParamString}`, opt: { responseType: 'json' } },
-          { timeout: 0 },
-        );
-      }, 5);
+      response = await this.fetchJson(ctx, `${url}${selectFieldsQueryStr}${skipParamString}`);
 
       response._data = await this.resolveAddresses(ctx, response._data);
 
@@ -359,6 +364,26 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     return [];
   }
 
+  /**
+   * One upstream read: a real timeout, retries, and a response that is checked
+   * before anything treats it as data. With `timeout: 0` a host that accepts the
+   * connection and never answers — which is what get.data.gov.lt does when it is
+   * overloaded — hung the whole run indefinitely.
+   */
+  @Method
+  async fetchJson(ctx: Context, url: string) {
+    const payload = await this.makeRequestWithRetries(
+      () =>
+        ctx.call(
+          'http.get',
+          { url, opt: { responseType: 'json' } },
+          { timeout: UPSTREAM_TIMEOUT_MS },
+        ),
+      5,
+    );
+    return assertJsonPayload(payload, url);
+  }
+
   @Method
   async getCount(ctx: Context, url: string) {
     const fullUrl = new URL(url);
@@ -373,7 +398,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     const totalResponse: any = await ctx.call(
       'http.get',
       { url, opt: { responseType: 'json' } },
-      { timeout: 0 },
+      { timeout: UPSTREAM_TIMEOUT_MS },
     );
 
     return totalResponse?._data?.[0]?.['count()'];
@@ -381,6 +406,22 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
 
   @Method
   async prefetchAndCacheAddresses(ctx: Context) {
+    // Addresses change slowly, so the cache outlives a run by a week. Walking
+    // 3.2M rows in 5000-row pages is ~640 requests, and doing that on every run
+    // is what tripped the upstream firewall in the first place.
+    const cachedFor = 60 * 60 * 24 * 8;
+    const freshFor = 1000 * 60 * 60 * 24 * 7;
+
+    const syncedAt = Number((await this.broker.cacher.get(addressSyncedAtKey)) ?? 0);
+    if (syncedAt && Date.now() - syncedAt < freshFor) {
+      this.broker.logger.info(
+        `Addresses cached ${Math.round(
+          (Date.now() - syncedAt) / 3600000,
+        )}h ago — skipping the walk`,
+      );
+      return;
+    }
+
     const query = [`limit(5000)`, 'sort(_id)', 'select(_id,statinio_id,gat_kodas,pastatas)']
       .map((i) => encodeURIComponent(i))
       .join('&');
@@ -388,45 +429,41 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     const baseUrl = this.settings.baseUrl + '/datasets/gov/ssva/infostatyba/Adresas/:format/json';
     const url = `${baseUrl}?${query}`;
 
-    const total = await this.getCount(ctx, baseUrl);
-    let skipParamString = '';
+    // Resume where the last attempt stopped. Restarting from the beginning after
+    // every upstream hiccup meant a walk this long rarely finished at all.
+    const cursor = (await this.broker.cacher.get(addressCursorKey)) as unknown as string | null;
+    let skipParamString = cursor ? `&_id>'${cursor}'` : '';
+    if (cursor) this.broker.logger.info(`Resuming address sync after _id ${cursor}`);
 
+    const total = await this.getCount(ctx, baseUrl);
     let response: any;
     const startTime = new Date();
-    const oneDay = 60 * 60 * 24;
-
-    const stats = {
-      count: 0,
-      total,
-    };
+    const stats = { count: 0, total };
 
     do {
-      response = await this.makeRequestWithRetries(() => {
-        return ctx.call(
-          'http.get',
-          { url: `${url}${skipParamString}`, opt: { responseType: 'json' } },
-          { timeout: 0 },
-        );
-      }, 5);
+      response = await this.fetchJson(ctx, `${url}${skipParamString}`);
 
       const items = response._data || [];
-
       stats.count += items.length;
-      let promises = [];
 
-      for (let entry of response._data) {
-        skipParamString = `&_id>'${entry._id}'`;
+      await Promise.all(
+        items.map((entry: any) =>
+          this.broker.cacher.set(`${addressCacheKey}:${entry.statinio_id}`, entry, cachedFor),
+        ),
+      );
 
-        promises.push(
-          this.broker.cacher.set(`${addressCacheKey}:${entry.statinio_id}`, entry, oneDay),
-        );
+      if (items.length) {
+        const lastId = items[items.length - 1]._id;
+        skipParamString = `&_id>'${lastId}'`;
+        await this.broker.cacher.set(addressCursorKey, lastId, cachedFor);
       }
-
-      await Promise.all(promises);
 
       const progress = this.calcProgression(stats.count, stats.total, startTime);
       this.broker.logger.info(`Address sync progress: ${progress.text}`);
     } while (response._data.length);
+
+    await this.broker.cacher.set(addressSyncedAtKey, Date.now(), cachedFor);
+    await this.broker.cacher.del(addressCursorKey);
   }
 
   @Method
