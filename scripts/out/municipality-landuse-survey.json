@@ -1,0 +1,748 @@
+[
+  {
+    "code": 11,
+    "name": "Alytaus m. sav.",
+    "site": "https://www.alytus.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 12,
+    "name": "Birštono sav.",
+    "site": "https://www.birstonas.lt",
+    "reachable": true,
+    "searchUrl": "https://www.birstonas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": true,
+    "sampleLinks": [
+      "https://www.birstonas.lt/lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://www.birstonas.lt/en/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://www.birstonas.lt/ru/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://birstonas.lt/pagrindines-zemes-naudojimo-paskirties-ir-ar-budo-pakeitimas/",
+      "https://birstonas.lt/2020/09/25/informacinis-pranesimas-apie-zemes-sklypo-1201-0003166-birstono-m-k-v-esancio-birstono-sav-birstono-m-b-sruogos-g-5-detaliojo-plano-kuris-patvirtintas-birstono-savivaldybes-administraci/"
+    ],
+    "note": "randama ir kadastro numerių — tinka nuskaitymui"
+  },
+  {
+    "code": 13,
+    "name": "Vilniaus m. sav.",
+    "site": "https://www.vilnius.lt",
+    "reachable": true,
+    "searchUrl": "https://www.vilnius.lt/naujienos/?categories=65",
+    "matchedTerms": [
+      "informacija apie žemės sklypo"
+    ],
+    "cadastralOnPage": true,
+    "sampleLinks": [],
+    "note": "rasta skiltyje /naujienos/?categories=65"
+  },
+  {
+    "code": 15,
+    "name": "Druskininkų sav.",
+    "site": "https://www.druskininkai.lt",
+    "reachable": true,
+    "searchUrl": "https://www.druskininkai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://druskininkai.lt/en/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://druskininkai.lt/pl/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://druskininkai.lt/ru/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://druskininkai.lt/de/?s=%C5%BEem%C4%97s%20paskirties%20keitimas"
+    ],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 18,
+    "name": "Marijampolės sav.",
+    "site": "https://www.marijampole.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 19,
+    "name": "Kauno m. sav.",
+    "site": "https://www.kaunas.lt",
+    "reachable": true,
+    "searchUrl": "https://www.kaunas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 21,
+    "name": "Klaipėdos m. sav.",
+    "site": "https://www.klaipeda.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 23,
+    "name": "Neringos sav.",
+    "site": "https://www.neringa.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 25,
+    "name": "Palangos m. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — palanga.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 27,
+    "name": "Panevėžio m. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — panevezias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 29,
+    "name": "Šiaulių m. sav.",
+    "site": "https://www.siauliai.lt",
+    "reachable": true,
+    "searchUrl": "https://www.siauliai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "informacija apie žemės sklypo"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 30,
+    "name": "Visagino sav.",
+    "site": "https://www.visaginas.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 32,
+    "name": "Akmenės r. sav.",
+    "site": "https://www.akmene.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 33,
+    "name": "Alytaus r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — alytus.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 34,
+    "name": "Anykščių r. sav.",
+    "site": "https://www.anyksciai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 36,
+    "name": "Biržų r. sav.",
+    "site": "https://www.birzai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 38,
+    "name": "Varėnos r. sav.",
+    "site": "https://www.varena.lt",
+    "reachable": true,
+    "searchUrl": "https://www.varena.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://varena.lt/savivaldybe/paslaugos/architekturos-sk-paslaugos/pagrindines-tikslines-zemes-naudojimo-paskirties-budo-keitimas/"
+    ],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 39,
+    "name": "Vilkaviškio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — vilkaviskias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 41,
+    "name": "Vilniaus r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — vilnius.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 42,
+    "name": "Elektrėnų sav.",
+    "site": "https://www.elektrenai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 43,
+    "name": "Zarasų r. sav.",
+    "site": "https://www.zarasai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 45,
+    "name": "Ignalinos r. sav.",
+    "site": "https://www.ignalina.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 46,
+    "name": "Jonavos r. sav.",
+    "site": "https://www.jonava.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 47,
+    "name": "Joniškio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — joniskias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 48,
+    "name": "Kalvarijos sav.",
+    "site": "https://www.kalvarija.lt",
+    "reachable": true,
+    "searchUrl": "https://www.kalvarija.lt/teritoriju-planavimas",
+    "matchedTerms": [
+      "paskirties keitimo"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://www.kalvarija.lt/prasymai-pakeisti-zemes-sklypo-pagrindine-zemes-naudojimo-paskirti/",
+      "https://www.kalvarija.lt/informacija-apie-nuomotinus-valstybines-zemes-ukio-paskirties-zemes-sklypus-miesto-teritorijoje/",
+      "https://www.kalvarija.lt/uploads/uploads2024/architektura/visuomenes%20informavimas/gintarai/18%20skelbimas.pdf"
+    ],
+    "note": "rasta skiltyje /teritoriju-planavimas"
+  },
+  {
+    "code": 49,
+    "name": "Kaišiadorių r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — kaisiadoriai.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 52,
+    "name": "Kauno r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — kaunas.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 53,
+    "name": "Kėdainių r. sav.",
+    "site": "https://www.kedainiai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 54,
+    "name": "Kelmės r. sav.",
+    "site": "https://www.kelme.lt",
+    "reachable": true,
+    "searchUrl": "https://www.kelme.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": true,
+    "sampleLinks": [
+      "https://www.kelme.lt/vadovaudamiesi-lietuvos-respublikos-teritoriju-planavimo-istatymu-informuojame-kad-kelmes-rajono-savivaldybes-administracijoje-gautas-prasymas-reg-nr-10-1-gp-733-nustatyti-zemes-sklypo-kelmes-r/",
+      "https://www.kelme.lt/page/2/?s=%C5%BEem%C4%97s+paskirties+keitimas",
+      "https://www.kelme.lt/page/3/?s=%C5%BEem%C4%97s+paskirties+keitimas",
+      "https://www.kelme.lt/page/81/?s=%C5%BEem%C4%97s+paskirties+keitimas"
+    ],
+    "note": "randama ir kadastro numerių — tinka nuskaitymui"
+  },
+  {
+    "code": 55,
+    "name": "Klaipėdos r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — klaipeda.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 56,
+    "name": "Kretingos r. sav.",
+    "site": "https://www.kretinga.lt",
+    "reachable": true,
+    "searchUrl": "https://www.kretinga.lt/skelbimai",
+    "matchedTerms": [
+      "informacija apie žemės sklypo"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://www.kretinga.lt/skelbimai/informacija-apie-zemes-sklypo-paskirties-ir-naudojimo-budo-keitima-85"
+    ],
+    "note": "rasta skiltyje /skelbimai"
+  },
+  {
+    "code": 57,
+    "name": "Kupiškio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — kupiskias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 58,
+    "name": "Kazlų Rūdos sav.",
+    "site": "https://www.kazluruda.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 59,
+    "name": "Lazdijų r. sav.",
+    "site": "https://www.lazdijai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 61,
+    "name": "Mažeikių r. sav.",
+    "site": "https://www.mazeikiai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 62,
+    "name": "Molėtų r. sav.",
+    "site": "https://www.moletai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 63,
+    "name": "Pagėgių sav.",
+    "site": "https://www.pagegiai.lt",
+    "reachable": true,
+    "searchUrl": "https://www.pagegiai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim",
+      "paskirties keitimo"
+    ],
+    "cadastralOnPage": true,
+    "sampleLinks": [
+      "https://www.pagegiai.lt/architektura-ir-teritoriju-planavimas/prasymai-pakeisti-zemes-sklypo-pagrindine-zemes-naudojimo-paskirti-ir-ar-pakeisti-ar-nustatyti-jeigu-jis-nenustatytas-zemes-sklypo-naudojimo-buda/"
+    ],
+    "note": "randama ir kadastro numerių — tinka nuskaitymui"
+  },
+  {
+    "code": 65,
+    "name": "Pakruojo r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — pakruojas.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 66,
+    "name": "Panevėžio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — panevezias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 67,
+    "name": "Pasvalio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — pasvalias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 68,
+    "name": "Plungės r. sav.",
+    "site": "https://www.plunge.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 69,
+    "name": "Prienų r. sav.",
+    "site": "https://www.prienai.lt",
+    "reachable": true,
+    "searchUrl": "https://www.prienai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": true,
+    "sampleLinks": [
+      "https://www.prienai.lt/gyventojams/teritoriju-planavimas-ir-statyba/zemes-paskirties-ir-ar-budo-nustatymas-keitimas/",
+      "https://www.prienai.lt/2021/07/09/nuo-liepos-1-d-prasymai-del-paskirties-ir-budo-keitimo-nustatymo-skelbiami-ir-savivaldybes-interneto-svetaineje/"
+    ],
+    "note": "randama ir kadastro numerių — tinka nuskaitymui"
+  },
+  {
+    "code": 71,
+    "name": "Radviliškio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — radviliskias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 72,
+    "name": "Raseinių r. sav.",
+    "site": "https://www.raseiniai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 73,
+    "name": "Rokiškio r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — rokiskias.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 74,
+    "name": "Rietavo sav.",
+    "site": "https://www.rietavas.lt",
+    "reachable": true,
+    "searchUrl": "https://www.rietavas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://rietavas.lt/nuomotini-valstybines-zemes-ukio-paskirties-zemes-sklypai/",
+      "https://rietavas.lt/skelbimai/pagrindines-zemes-naudojimo-paskirties-ir-ar-budo-pakeitimas-2/",
+      "https://rietavas.lt/skelbimai/pagrindines-zemes-naudojimo-paskirties-ir-ar-budo-pakeitimas/",
+      "https://rietavas.lt/post_services/pagrindines-zemes-naudojimo-paskirties-ir-ar-naudojimo-budo-keitimas/"
+    ],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 75,
+    "name": "Skuodo r. sav.",
+    "site": "https://www.skuodas.lt",
+    "reachable": true,
+    "searchUrl": "https://www.skuodas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 77,
+    "name": "Tauragės r. sav.",
+    "site": "https://www.taurage.lt",
+    "reachable": true,
+    "searchUrl": "https://www.taurage.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://taurage.lt/?s=%C5%BEem%C4%97s+paskirties+keitimas",
+      "https://taurage.lt/en/?s=%C5%BEem%C4%97s+paskirties+keitimas",
+      "https://taurage.lt/veiklos-sritys/urbanistika-ir-statyba/prasymai-pakeisti-zemes-sklypo-pagrindine-zemes-naudojimo-paskirti-ir-ar-pakeisti-ar-nustatyti-zemes-sklypo-naudojimo-buda/",
+      "https://taurage.lt/page/2/?s=%C5%BEem%C4%97s+paskirties+keitimas"
+    ],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 78,
+    "name": "Telšių r. sav.",
+    "site": "https://www.telsiai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 79,
+    "name": "Trakų r. sav.",
+    "site": "https://www.trakai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 81,
+    "name": "Ukmergės r. sav.",
+    "site": "https://ukmerge.lt",
+    "reachable": true,
+    "searchUrl": "https://ukmerge.lt/skelbimai",
+    "matchedTerms": [
+      "paskirties keitimo"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "rasta skiltyje /skelbimai"
+  },
+  {
+    "code": 82,
+    "name": "Utenos r. sav.",
+    "site": "https://www.utena.lt",
+    "reachable": true,
+    "searchUrl": "https://www.utena.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim",
+      "paskirties keitimo"
+    ],
+    "cadastralOnPage": false,
+    "sampleLinks": [
+      "https://utena.lt/paslaugos/pagrindines-zemes-naudojimo-paskirties-ir-ar-naudojimo-budo-keitimas-ar-nustatymas/",
+      "https://utena.lt/page/2/?s=%C5%BEem%C4%97s+paskirties+keitimas",
+      "https://utena.lt/page/3/?s=%C5%BEem%C4%97s+paskirties+keitimas",
+      "https://utena.lt/page/4/?s=%C5%BEem%C4%97s+paskirties+keitimas"
+    ],
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
+  },
+  {
+    "code": 84,
+    "name": "Šakių r. sav.",
+    "site": "https://www.sakiai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 85,
+    "name": "Šalčininkų r. sav.",
+    "site": "https://www.salcininkai.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 86,
+    "name": "Švenčionių r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — svencioniai.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 87,
+    "name": "Šilalės r. sav.",
+    "site": "https://www.silale.lt",
+    "reachable": true,
+    "searchUrl": "https://www.silale.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
+    "cadastralOnPage": true,
+    "sampleLinks": [
+      "https://www.silale.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+      "https://silale.lt/savivaldybe/valstybines-zemes-administravimas/nenaudojamu-apleistu-kitos-paskirties-zemes-sklypu-sarasas/",
+      "https://silale.lt/savivaldybe/valstybines-zemes-administravimas/nuomotini-valstybines-zemes-ukio-paskirties-zemes-sklypai/",
+      "https://silale.lt/2024/12/zemes-sklypo-esancio-vasario-16-osios-g-7-silale-paskirties-keitimas/",
+      "https://silale.lt/2024/06/bilioniu-sen-aukstagires-k-zemes-sklypo-naudojimo-paskirties-pakeitimas/"
+    ],
+    "note": "randama ir kadastro numerių — tinka nuskaitymui"
+  },
+  {
+    "code": 88,
+    "name": "Šilutės r. sav.",
+    "site": "https://www.silute.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  },
+  {
+    "code": 89,
+    "name": "Širvintų r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — sirvintai.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 91,
+    "name": "Šiaulių r. sav.",
+    "site": null,
+    "reachable": false,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė neaiški — siauliai.lt neatsakė arba priklauso kitai savivaldybei"
+  },
+  {
+    "code": 94,
+    "name": "Jurbarko r. sav.",
+    "site": "https://www.jurbarkas.lt",
+    "reachable": true,
+    "searchUrl": null,
+    "matchedTerms": [],
+    "cadastralOnPage": false,
+    "sampleLinks": [],
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
+  }
+]
