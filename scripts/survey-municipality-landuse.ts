@@ -71,23 +71,12 @@ type Finding = {
   note: string;
 };
 
-/** Genitive municipality name -> the nominative most sites use as their domain. */
-function toDomainName(name: string): string {
-  const base = name
+/** "Vilniaus m. sav." -> "vilniaus" — the stem as the name already gives it. */
+function genitiveStem(name: string): string {
+  return name
     .replace(/\s+(m\.|r\.)?\s*sav\.$/i, '')
     .trim()
-    .toLowerCase();
-
-  const nominative = base
-    .replace(/iaus$/, 'ius')
-    .replace(/aus$/, 'us')
-    .replace(/ies$/, 'is')
-    .replace(/ų$/, 'ai')
-    .replace(/ės$/, 'ė')
-    .replace(/os$/, 'a')
-    .replace(/o$/, 'as');
-
-  return nominative
+    .toLowerCase()
     .replace(/ą/g, 'a')
     .replace(/č/g, 'c')
     .replace(/ę/g, 'e')
@@ -98,6 +87,45 @@ function toDomainName(name: string): string {
     .replace(/ū/g, 'u')
     .replace(/ž/g, 'z')
     .replace(/\s+/g, '');
+}
+
+/** "vilniaus" -> "vilnius", the nominative most city sites use as their domain. */
+function toDomainName(name: string): string {
+  return genitiveStem(name)
+    .replace(/iaus$/, 'ius')
+    .replace(/aus$/, 'us')
+    .replace(/ies$/, 'is')
+    .replace(/u$/, 'ai')
+    .replace(/es$/, 'e')
+    .replace(/os$/, 'a')
+    .replace(/o$/, 'as');
+}
+
+/**
+ * District municipalities do not follow one convention — vrsa.lt, krs.lt,
+ * kaunorajonas.lt and siauliuraj.lt are all real, and all four patterns had to
+ * be probed to find them. Offer every candidate and let the name check decide;
+ * a guess that lands on the city's site is worse than no answer.
+ */
+function candidateDomains(name: string): string[] {
+  const stem = genitiveStem(name);
+  const nominative = toDomainName(name);
+  const initial = stem.slice(0, 1);
+  const isDistrict = /\br\.\s*sav\.$/i.test(name);
+
+  const names = isDistrict
+    ? [
+        `${stem}raj`,
+        `${stem}rajonas`,
+        `${initial}rsa`,
+        `${initial}rs`,
+        `${stem}rsa`,
+        nominative,
+        stem,
+      ]
+    : [nominative, stem, `${stem}sa`];
+
+  return [...new Set(names)].flatMap((n) => [`https://www.${n}.lt`, `https://${n}.lt`]);
 }
 
 async function get(url: string): Promise<{ ok: boolean; status: number; text: string }> {
@@ -118,7 +146,7 @@ async function get(url: string): Promise<{ ok: boolean; status: number; text: st
  * answer: vilnius.lt is not Vilniaus r. sav., and the heuristic cannot tell.
  * Only accept a site whose own page names the municipality it should be.
  */
-async function resolveSite(domainName: string, name: string): Promise<string | null> {
+async function resolveSite(name: string): Promise<string | null> {
   const stem = name
     .replace(/\s+(m\.|r\.)?\s*sav\.$/i, '')
     .trim()
@@ -126,7 +154,7 @@ async function resolveSite(domainName: string, name: string): Promise<string | n
     .slice(0, 6);
   const isDistrict = /\br\.\s*sav\.$/i.test(name);
 
-  for (const candidate of [`https://www.${domainName}.lt`, `https://${domainName}.lt`]) {
+  for (const candidate of candidateDomains(name)) {
     const res = await get(candidate);
     if (!res.ok) continue;
     const text = textOf(res.text).slice(0, 4000);
@@ -218,8 +246,7 @@ function linksMentioning(html: string, site: string): string[] {
 }
 
 async function survey(code: string, name: string): Promise<Finding> {
-  const domainName = toDomainName(name);
-  const site = await resolveSite(domainName, name);
+  const site = await resolveSite(name);
 
   const finding: Finding = {
     code,
@@ -234,7 +261,9 @@ async function survey(code: string, name: string): Promise<Finding> {
   };
 
   if (!site) {
-    finding.note = `svetainė neaiški — ${domainName}.lt neatsakė arba priklauso kitai savivaldybei`;
+    finding.note = `svetainė neaiški — nė vienas iš ${
+      candidateDomains(name).length
+    } kandidatų nepasitvirtino`;
     return finding;
   }
 
@@ -301,7 +330,14 @@ async function main() {
   const items: Array<{ code: string; name: string }> = (await res.json()).items ?? [];
 
   const targets = wanted.length
-    ? items.filter((m) => wanted.some((w) => toDomainName(m.name).includes(w)))
+    ? items.filter((m) =>
+        wanted.some(
+          (w) =>
+            m.name.toLowerCase().includes(w) ||
+            genitiveStem(m.name).includes(w) ||
+            toDomainName(m.name).includes(w),
+        ),
+      )
     : items;
 
   // Prove the method still finds the one case we know exists before trusting a

@@ -115,7 +115,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — palanga.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 6 kandidatų nepasitvirtino"
   },
   {
     "code": 27,
@@ -126,7 +126,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — panevezias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 6 kandidatų nepasitvirtino"
   },
   {
     "code": 29,
@@ -166,13 +166,13 @@
   {
     "code": 33,
     "name": "Alytaus r. sav.",
-    "site": null,
-    "reachable": false,
+    "site": "https://www.arsa.lt",
+    "reachable": true,
     "searchUrl": null,
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — alytus.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
   },
   {
     "code": 34,
@@ -220,18 +220,20 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — vilkaviskias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 41,
     "name": "Vilniaus r. sav.",
-    "site": null,
-    "reachable": false,
-    "searchUrl": null,
-    "matchedTerms": [],
+    "site": "https://www.vrsa.lt",
+    "reachable": true,
+    "searchUrl": "https://www.vrsa.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "paskirties keitimo"
+    ],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — vilnius.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
   },
   {
     "code": 42,
@@ -286,7 +288,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — joniskias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 48,
@@ -314,18 +316,20 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — kaisiadoriai.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 52,
     "name": "Kauno r. sav.",
-    "site": null,
-    "reachable": false,
-    "searchUrl": null,
-    "matchedTerms": [],
+    "site": "https://www.kaunorajonas.lt",
+    "reachable": true,
+    "searchUrl": "https://www.kaunorajonas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — kaunas.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
   },
   {
     "code": 53,
@@ -359,13 +363,15 @@
   {
     "code": 55,
     "name": "Klaipėdos r. sav.",
-    "site": null,
-    "reachable": false,
-    "searchUrl": null,
-    "matchedTerms": [],
+    "site": "https://www.klaipedosrajonas.lt",
+    "reachable": true,
+    "searchUrl": "https://www.klaipedosrajonas.lt/paieska?q=%C5%BEem%C4%97s%20paskirties%20keitimas",
+    "matchedTerms": [
+      "žemės paskirties keitim"
+    ],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — klaipeda.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "terminai randami, kadastro numerių paieškos puslapyje nėra"
   },
   {
     "code": 56,
@@ -391,7 +397,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — kupiskias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 58,
@@ -462,7 +468,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — pakruojas.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 66,
@@ -473,7 +479,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — panevezias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 67,
@@ -484,7 +490,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — pasvalias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 68,
@@ -522,7 +528,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — radviliskias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 72,
@@ -544,7 +550,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — rokiskias.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 74,
@@ -620,9 +626,9 @@
   {
     "code": 81,
     "name": "Ukmergės r. sav.",
-    "site": "https://ukmerge.lt",
+    "site": "https://www.ukmerge.lt",
     "reachable": true,
-    "searchUrl": "https://ukmerge.lt/skelbimai",
+    "searchUrl": "https://www.ukmerge.lt/skelbimai",
     "matchedTerms": [
       "paskirties keitimo"
     ],
@@ -680,7 +686,7 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — svencioniai.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 87,
@@ -721,18 +727,18 @@
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — sirvintai.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė neaiški — nė vienas iš 14 kandidatų nepasitvirtino"
   },
   {
     "code": 91,
     "name": "Šiaulių r. sav.",
-    "site": null,
-    "reachable": false,
+    "site": "https://www.siauliuraj.lt",
+    "reachable": true,
     "searchUrl": null,
     "matchedTerms": [],
     "cadastralOnPage": false,
     "sampleLinks": [],
-    "note": "svetainė neaiški — siauliai.lt neatsakė arba priklauso kitai savivaldybei"
+    "note": "svetainė pasiekiama, bet nei paieška, nei žinomos skiltys nieko negrąžino"
   },
   {
     "code": 94,

@@ -32,27 +32,29 @@ Vilniaus tipo integracijai.
 | Šilalės r. sav.  | https://www.silale.lt    | https://www.silale.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas    |
 
 Penkios iš šešių naudoja tą patį WordPress paieškos šabloną (`/?s=`), o Vilnius —
-naujienų kategoriją. Jei ir turinio struktūra sutampa, vienas parametrizuotas
-skriptas padengtų penkias iš karto.
+naujienų kategoriją.
 
 ## Reikia žmogaus žvilgsnio
 
 Terminai randami, bet kadastro numerių tame puslapyje nėra. Gali būti, kad jie
 yra straipsnio viduje, PDF'e arba skelbimai formuluojami kitaip.
 
-| Savivaldybė       | Svetainė                    | Kur rasta                                                              |
-| ----------------- | --------------------------- | ---------------------------------------------------------------------- |
-| Druskininkų sav.  | https://www.druskininkai.lt | https://www.druskininkai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas |
-| Kauno m. sav.     | https://www.kaunas.lt       | https://www.kaunas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas       |
-| Šiaulių m. sav.   | https://www.siauliai.lt     | https://www.siauliai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas     |
-| Varėnos r. sav.   | https://www.varena.lt       | https://www.varena.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas       |
-| Kalvarijos sav.   | https://www.kalvarija.lt    | https://www.kalvarija.lt/teritoriju-planavimas                         |
-| Kretingos r. sav. | https://www.kretinga.lt     | https://www.kretinga.lt/skelbimai                                      |
-| Rietavo sav.      | https://www.rietavas.lt     | https://www.rietavas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas     |
-| Skuodo r. sav.    | https://www.skuodas.lt      | https://www.skuodas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas      |
-| Tauragės r. sav.  | https://www.taurage.lt      | https://www.taurage.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas      |
-| Ukmergės r. sav.  | https://ukmerge.lt          | https://ukmerge.lt/skelbimai                                           |
-| Utenos r. sav.    | https://www.utena.lt        | https://www.utena.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas        |
+| Savivaldybė       | Svetainė                        | Kur rasta                                                                         |
+| ----------------- | ------------------------------- | --------------------------------------------------------------------------------- |
+| Druskininkų sav.  | https://www.druskininkai.lt     | https://www.druskininkai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas            |
+| Kauno m. sav.     | https://www.kaunas.lt           | https://www.kaunas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                  |
+| Šiaulių m. sav.   | https://www.siauliai.lt         | https://www.siauliai.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                |
+| Varėnos r. sav.   | https://www.varena.lt           | https://www.varena.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                  |
+| Vilniaus r. sav.  | https://www.vrsa.lt             | https://www.vrsa.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                    |
+| Kalvarijos sav.   | https://www.kalvarija.lt        | https://www.kalvarija.lt/teritoriju-planavimas                                    |
+| Kauno r. sav.     | https://www.kaunorajonas.lt     | https://www.kaunorajonas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas            |
+| Klaipėdos r. sav. | https://www.klaipedosrajonas.lt | https://www.klaipedosrajonas.lt/paieska?q=%C5%BEem%C4%97s%20paskirties%20keitimas |
+| Kretingos r. sav. | https://www.kretinga.lt         | https://www.kretinga.lt/skelbimai                                                 |
+| Rietavo sav.      | https://www.rietavas.lt         | https://www.rietavas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                |
+| Skuodo r. sav.    | https://www.skuodas.lt          | https://www.skuodas.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                 |
+| Tauragės r. sav.  | https://www.taurage.lt          | https://www.taurage.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                 |
+| Ukmergės r. sav.  | https://www.ukmerge.lt          | https://www.ukmerge.lt/skelbimai                                                  |
+| Utenos r. sav.    | https://www.utena.lt            | https://www.utena.lt/?s=%C5%BEem%C4%97s%20paskirties%20keitimas                   |
 
 ## Nieko nerasta
 
@@ -67,6 +69,7 @@ Svetainė atsako, bet nei paieška, nei žinomos skiltys nieko negrąžino. Tai
 | Neringos sav.      | https://www.neringa.lt     |
 | Visagino sav.      | https://www.visaginas.lt   |
 | Akmenės r. sav.    | https://www.akmene.lt      |
+| Alytaus r. sav.    | https://www.arsa.lt        |
 | Anykščių r. sav.   | https://www.anyksciai.lt   |
 | Biržų r. sav.      | https://www.birzai.lt      |
 | Elektrėnų sav.     | https://www.elektrenai.lt  |
@@ -85,25 +88,23 @@ Svetainė atsako, bet nei paieška, nei žinomos skiltys nieko negrąžino. Tai
 | Šakių r. sav.      | https://www.sakiai.lt      |
 | Šalčininkų r. sav. | https://www.salcininkai.lt |
 | Šilutės r. sav.    | https://www.silute.lt      |
+| Šiaulių r. sav.    | https://www.siauliuraj.lt  |
 | Jurbarko r. sav.   | https://www.jurbarkas.lt   |
 
 ## Svetainės adresas neaiškus
 
-Domenas spėjamas iš pavadinimo, o spėjimas nepasitvirtino arba atvedė į kitos
-savivaldybės svetainę. Rajonų savivaldybės beveik visos čia — `vilnius.lt` nėra
-Vilniaus r. sav. Šias reikia suvesti ranka.
+Domenai spėjami iš pavadinimo. Rajonų savivaldybės nesilaiko vienos
+konvencijos — `vrsa.lt`, `krs.lt`, `kaunorajonas.lt` ir `siauliuraj.lt` visi
+realūs, todėl tikrinami visi tokie šablonai, o priimamas tik tas, kurio puslapis
+įvardija tą pačią savivaldybę. Šioms nepasitvirtino nė vienas:
 
 | Savivaldybė         |
 | ------------------- |
 | Palangos m. sav.    |
 | Panevėžio m. sav.   |
-| Alytaus r. sav.     |
 | Vilkaviškio r. sav. |
-| Vilniaus r. sav.    |
 | Joniškio r. sav.    |
 | Kaišiadorių r. sav. |
-| Kauno r. sav.       |
-| Klaipėdos r. sav.   |
 | Kupiškio r. sav.    |
 | Pakruojo r. sav.    |
 | Panevėžio r. sav.   |
@@ -112,7 +113,6 @@ Vilniaus r. sav. Šias reikia suvesti ranka.
 | Rokiškio r. sav.    |
 | Švenčionių r. sav.  |
 | Širvintų r. sav.    |
-| Šiaulių r. sav.     |
 
 ## Metodo ribos
 
@@ -132,8 +132,8 @@ išvada**.
 
 ## Ką daryčiau toliau
 
-1. Rankomis suvesti 18 neaiškių savivaldybių domenus — be to trečdalis
-   sąrašo lieka nepatikrintas.
+1. Rankomis suvesti 13 neaiškių savivaldybių domenus — be jų tiek pat
+   savivaldybių lieka nepatikrinta.
 2. Patikrinti, ar tos penkios WordPress savivaldybės turi vienodą straipsnio
    struktūrą. Jei taip — vienas skriptas su parametrais, o ne penki.
 3. Tik tada rašyti nuskaitymą, pradedant nuo didžiausių savivaldybių.
