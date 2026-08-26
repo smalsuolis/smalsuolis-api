@@ -134,7 +134,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
 
     let total = limit;
     if (!total) {
-      total = await this.getCount(ctx, url);
+      total = await this.getCountOrZero(ctx, url);
     }
     /* 
       Since Statinys doesn't have relationship to addresses dataset we can go two ways:
@@ -384,6 +384,11 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     return assertJsonPayload(payload, url);
   }
 
+  /**
+   * Only ever feeds the progress line, so a failure here must not take the run
+   * with it — count() is the first thing upstream drops when it is struggling,
+   * and losing a whole sync over a log message is not a trade worth making.
+   */
   @Method
   async getCount(ctx: Context, url: string) {
     const fullUrl = new URL(url);
@@ -402,6 +407,20 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     );
 
     return totalResponse?._data?.[0]?.['count()'];
+  }
+
+  @Method
+  async getCountOrZero(ctx: Context, url: string) {
+    try {
+      return (await this.getCount(ctx, url)) ?? 0;
+    } catch (err: any) {
+      this.broker.logger.warn(
+        `[${this.name}] count() failed, continuing without a progress total: ${
+          err?.message ?? err
+        }`,
+      );
+      return 0;
+    }
   }
 
   @Method
@@ -435,7 +454,7 @@ export default class IntegrationsInfostatybaService extends moleculer.Service {
     let skipParamString = cursor ? `&_id>'${cursor}'` : '';
     if (cursor) this.broker.logger.info(`Resuming address sync after _id ${cursor}`);
 
-    const total = await this.getCount(ctx, baseUrl);
+    const total = await this.getCountOrZero(ctx, baseUrl);
     let response: any;
     const startTime = new Date();
     const stats = { count: 0, total };

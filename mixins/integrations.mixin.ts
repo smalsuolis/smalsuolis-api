@@ -106,12 +106,26 @@ export function IntegrationsMixin() {
       },
       calcProgression(count: number, total: number, startTime: Date) {
         const currentTime = new Date();
+        const duration = formatDuration(intervalToDuration({ start: startTime, end: currentTime }));
+
+        // An unknown total is normal now: count() is the first thing upstream
+        // drops when it is struggling, and the run carries on without it.
+        if (!total) {
+          return {
+            count,
+            total,
+            percentage: 0,
+            duration,
+            estimatedDuration: 'unknown',
+            text: `${count} of unknown - ${duration}`,
+          };
+        }
+
         const percentage = Math.round((count / total) * 10000) / 100;
 
         const estimatedEndTime = new Date(
           (currentTime.getTime() - startTime.getTime()) / (percentage / 100) + startTime.getTime(),
         );
-        const duration = formatDuration(intervalToDuration({ start: startTime, end: currentTime }));
         const estimatedDuration = formatDuration(
           intervalToDuration({ start: startTime, end: estimatedEndTime }),
         );
