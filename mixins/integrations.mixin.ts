@@ -75,28 +75,57 @@ export function IntegrationsMixin() {
         let keepTrying = true;
         let tries = 0;
         let response;
+        let lastError: any;
         do {
           tries++;
           try {
             response = await request({ retryCount, tries });
             keepTrying = false;
-          } catch (err) {
+          } catch (err: any) {
+            // Keep it: this used to be dropped on the floor, so a month of
+            // failing runs reported nothing but "Moleculer HTTP Client Error."
+            lastError = err;
+            this.broker.logger.warn(
+              `[${this.name}] upstream request failed (${tries}/${retryCount}): ${
+                err?.message ?? err
+              }`,
+            );
             await staleFor(tries);
             keepTrying = true;
           }
         } while (tries < retryCount && keepTrying);
 
-        if (!response) throw Error('No response');
+        if (!response) {
+          throw new Error(
+            `no response after ${tries} ${tries === 1 ? 'try' : 'tries'}: ${
+              lastError?.message ?? lastError ?? 'unknown error'
+            }`,
+          );
+        }
         return response;
       },
       calcProgression(count: number, total: number, startTime: Date) {
         const currentTime = new Date();
+        const duration = formatDuration(intervalToDuration({ start: startTime, end: currentTime }));
+
+        // An unknown total is normal now: count() is the first thing upstream
+        // drops when it is struggling, and the run carries on without it.
+        if (!total) {
+          return {
+            count,
+            total,
+            percentage: 0,
+            duration,
+            estimatedDuration: 'unknown',
+            text: `${count} of unknown - ${duration}`,
+          };
+        }
+
         const percentage = Math.round((count / total) * 10000) / 100;
 
         const estimatedEndTime = new Date(
           (currentTime.getTime() - startTime.getTime()) / (percentage / 100) + startTime.getTime(),
         );
-        const duration = formatDuration(intervalToDuration({ start: startTime, end: currentTime }));
         const estimatedDuration = formatDuration(
           intervalToDuration({ start: startTime, end: estimatedEndTime }),
         );
@@ -317,6 +346,25 @@ export function IntegrationsMixin() {
       },
       addInvalid(count: number = 1) {
         this.stats.invalid.total += count;
+      },
+      /**
+       * One run at a time. `stats` and `validExternalIds` live on the service,
+       * so a second run resets them under the first — and cleanupInvalidEvents
+       * soft-deletes every event whose externalId is not in that set, so an
+       * overlap could remove events the other run had just validated.
+       */
+      beginExclusiveRun(): boolean {
+        if (this.integrationRunning) {
+          this.broker.logger.warn(
+            `[${this.name}] a run is already in progress — skipping this trigger`,
+          );
+          return false;
+        }
+        this.integrationRunning = true;
+        return true;
+      },
+      endExclusiveRun() {
+        this.integrationRunning = false;
       },
       startIntegration(): IntegrationStats {
         this.validExternalIds = new Set();
