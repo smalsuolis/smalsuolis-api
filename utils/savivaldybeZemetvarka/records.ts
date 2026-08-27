@@ -70,10 +70,51 @@ export function isDateHeading(text: string): boolean {
 }
 
 /**
- * Flatten the content region into an ordered list of leaf text blocks.
+ * The text a block owns directly, excluding anything belonging to a block-level
+ * child.
  *
- * Only blocks with no block-level children are kept, so a wrapping `<div>` does
- * not repeat the text of every paragraph inside it.
+ * These pages are pasted out of Word, which emits `<p>2026-08-17<p></p></p>` —
+ * a paragraph nested inside a paragraph. Treating only childless elements as
+ * blocks throws that date away with the wrapper, and the notice loses its date
+ * while the page plainly shows one.
+ */
+function ownText(el: HTMLElement): string {
+  let out = '';
+  for (const node of el.childNodes) {
+    const child = node as HTMLElement;
+    const tag = child.tagName?.toLowerCase();
+    if (tag && BLOCK_TAGS.includes(tag)) continue;
+    out += child.text ?? '';
+  }
+  return collapse(out);
+}
+
+/** Links owned directly by a block, on the same basis as its text. */
+function ownHrefs(el: HTMLElement): string[] {
+  const hrefs: string[] = [];
+  for (const node of el.childNodes) {
+    const child = node as HTMLElement;
+    const tag = child.tagName?.toLowerCase();
+    if (tag && BLOCK_TAGS.includes(tag)) continue;
+    if (tag === 'a') {
+      const href = child.getAttribute?.('href');
+      if (href) hrefs.push(href);
+    }
+    if (child.querySelectorAll) {
+      for (const a of child.querySelectorAll('a[href]')) {
+        const href = a.getAttribute('href');
+        if (href) hrefs.push(href);
+      }
+    }
+  }
+  return hrefs;
+}
+
+/**
+ * Flatten the content region into an ordered list of text blocks.
+ *
+ * Each block carries only the text it owns, so a wrapping element does not
+ * repeat everything inside it and a Word-nested one does not swallow its own.
  */
 export function flattenBlocks(html: string): Block[] {
   const root = parse(html);
@@ -86,9 +127,8 @@ export function flattenBlocks(html: string): Block[] {
 
   const blocks: Block[] = [];
   for (const el of content.querySelectorAll(BLOCK_TAGS.join(','))) {
-    if (el.querySelector(BLOCK_TAGS.join(','))) continue;
-    const text = collapse(el.text);
-    const hrefs = el.querySelectorAll('a[href]').map((a) => a.getAttribute('href') || '');
+    const text = ownText(el);
+    const hrefs = ownHrefs(el);
     if (!text && !hrefs.length) continue;
     blocks.push({ text, hrefs });
   }
