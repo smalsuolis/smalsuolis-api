@@ -23,6 +23,10 @@ import {
   syntheticId,
   isDateHeading,
 } from '../../utils/savivaldybeZemetvarka/records';
+import {
+  parseMunicipalityIndex,
+  parseNoticePagePaths,
+} from '../../utils/savivaldybeZemetvarka/portal';
 
 const fixture = (name: string) =>
   readFileSync(join(__dirname, 'fixtures', `${name}.excerpt.html`), 'utf-8');
@@ -284,5 +288,42 @@ describe('parsing real portal pages', () => {
       .sort();
 
     assert.deepEqual(after, before);
+  });
+});
+
+describe('finding the notice pages', () => {
+  it('reads every municipality out of the index', () => {
+    const sections = parseMunicipalityIndex(fixture('portal-index'));
+    assert.equal(sections.length, 60, 'Lithuania has 60 municipalities');
+
+    const zarasai = sections.find((s) => s.slug === 'zarasu_raj');
+    assert.equal(zarasai?.name, 'Zarasų raj.');
+    assert.equal(zarasai?.path, '/lt/planuoju_rtpd/zarasu_raj');
+  });
+
+  it('does not count the index page as a municipality', () => {
+    const sections = parseMunicipalityIndex(fixture('portal-index'));
+    assert.ok(!sections.some((s) => s.slug === 'savivaldybes_vietoves_lygmens_tpd'));
+  });
+
+  it('keeps a municipality whose own slug is misspelled', () => {
+    // The portal writes Ignalina's slug as `ignalinos_jar`. Deriving slugs from
+    // names instead of reading them would silently drop it.
+    const sections = parseMunicipalityIndex(fixture('portal-index'));
+    assert.ok(sections.some((s) => s.slug === 'ignalinos_jar'));
+  });
+
+  it('returns every notice page a municipality has, not just the first', () => {
+    // Kauno r. has seven; the current notices are in the last of them, and the
+    // names give no reliable ordering (`pagal_20_2_2_iki_nuo_2026`).
+    const paths = parseNoticePagePaths(fixture('portal-section'), 'kauno_raj');
+    assert.equal(paths.length, 7);
+    assert.ok(paths.includes('/lt/planuoju_rtpd/kauno_raj/pagal_20_2_2_iki_nuo_2026'));
+  });
+
+  it('ignores the other document types in the same section', () => {
+    const paths = parseNoticePagePaths(fixture('portal-section'), 'kauno_raj');
+    assert.ok(paths.every((p) => /pagal_20_2_2/.test(p)));
+    assert.ok(!paths.some((p) => /detalieji|kor_28_9|specialieji|bendrieji/.test(p)));
   });
 });
