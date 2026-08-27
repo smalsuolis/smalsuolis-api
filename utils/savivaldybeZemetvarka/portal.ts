@@ -26,8 +26,16 @@ export type MunicipalitySection = {
   path: string;
 };
 
-const SECTION_HREF_RE = /^\/(?:lt\/)?planuoju_rtpd\/([a-z0-9_]+)$/i;
-const NOTICE_HREF_RE = /^\/(?:lt\/)?planuoju_rtpd\/([a-z0-9_]+)\/(pagal_20_2_2[a-z0-9_]*)$/i;
+// Links are written both ways on the same page — most are site-relative, but
+// some are absolute, and on Vilniaus r. it is precisely the page holding the
+// current notices that is absolute. Matching only relative hrefs drops the one
+// page that matters and leaves the municipality looking silent.
+const ORIGIN = /^(?:https?:\/\/(?:www\.)?planuojustatau\.lt)?/.source;
+const SECTION_HREF_RE = new RegExp(`^${ORIGIN}\\/(?:lt\\/)?planuoju_rtpd\\/([a-z0-9_]+)$`, 'i');
+const NOTICE_HREF_RE = new RegExp(
+  `^${ORIGIN}\\/(?:lt\\/)?planuoju_rtpd\\/([a-z0-9_]+)\\/(pagal_20_2_2[a-z0-9_]*)$`,
+  'i',
+);
 
 /** Every municipality section linked from the index page. */
 export function parseMunicipalityIndex(html: string): MunicipalitySection[] {

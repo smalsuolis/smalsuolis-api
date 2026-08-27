@@ -327,3 +327,28 @@ describe('finding the notice pages', () => {
     assert.ok(!paths.some((p) => /detalieji|kor_28_9|specialieji|bendrieji/.test(p)));
   });
 });
+
+describe('links written as absolute URLs', () => {
+  // Vilniaus r. links its six older notice pages relatively and the current one
+  // absolutely. Matching only relative hrefs drops the 1.3 MB page holding
+  // every 2026 notice, and the municipality reads as silent.
+  const html = `<div class="field field--name-body field--item"><ul>
+    <li><a href="/planuoju_rtpd/vilniaus_raj/pagal_20_2_2_nuo_202401">senas</a></li>
+    <li><a href="https://www.planuojustatau.lt/planuoju_rtpd/vilniaus_raj/pagal_20_2_2_nuo_20250102">naujas</a></li>
+  </ul></div>`;
+
+  it('finds a notice page linked absolutely', () => {
+    const paths = parseNoticePagePaths(html, 'vilniaus_raj');
+    assert.equal(paths.length, 2);
+    assert.ok(paths.includes('/lt/planuoju_rtpd/vilniaus_raj/pagal_20_2_2_nuo_20250102'));
+  });
+
+  it('finds a municipality linked absolutely', () => {
+    const index = `<div class="field field--name-body field--item">
+      <a href="https://www.planuojustatau.lt/planuoju_rtpd/zarasu_raj">Zarasų raj.</a></div>`;
+    assert.deepEqual(
+      parseMunicipalityIndex(index).map((s) => s.slug),
+      ['zarasu_raj'],
+    );
+  });
+});
