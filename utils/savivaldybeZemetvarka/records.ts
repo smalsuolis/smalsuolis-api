@@ -21,7 +21,26 @@ import { extractParcelIds, hasParcelId, ParcelIds } from './cadastral';
 
 // Drupal's body field. Scoping to it excludes the site navigation, which
 // otherwise contributes ~72 list items of chrome to every page.
-const CONTENT_SELECTORS = ['.field--name-body', '.region-content article .content'];
+/**
+ * Where a page keeps its notices, tried in order.
+ *
+ * Scoping to a content container matters: site navigation contributes dozens of
+ * list items of chrome to every page, and a whole-document read turns them into
+ * phantom blocks. Municipality sites each name their container differently, so
+ * a source may supply its own; these are the defaults that cover the common
+ * CMSes, with the document body as a last resort so an unknown template
+ * degrades to noisy rather than empty.
+ */
+const DEFAULT_CONTENT_SELECTORS = [
+  '.field--name-body',
+  '.region-content article .content',
+  '.plain_content',
+  '.formatted_text',
+  '.news_content',
+  'article',
+  'main',
+  'body',
+];
 
 const BLOCK_TAGS = ['p', 'li', 'td', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div'];
 
@@ -116,10 +135,10 @@ function ownHrefs(el: HTMLElement): string[] {
  * Each block carries only the text it owns, so a wrapping element does not
  * repeat everything inside it and a Word-nested one does not swallow its own.
  */
-export function flattenBlocks(html: string): Block[] {
+export function flattenBlocks(html: string, contentSelectors?: string[]): Block[] {
   const root = parse(html);
   let content: HTMLElement | null = null;
-  for (const selector of CONTENT_SELECTORS) {
+  for (const selector of contentSelectors?.length ? contentSelectors : DEFAULT_CONTENT_SELECTORS) {
     content = root.querySelector(selector);
     if (content) break;
   }
@@ -279,8 +298,12 @@ export function syntheticId(
 }
 
 /** Parse one municipality's notice page into identified records. */
-export function parsePortalPage(html: string, municipalitySlug: string): PortalRecord[] {
-  return groupRecords(flattenBlocks(html))
+export function parsePortalPage(
+  html: string,
+  municipalitySlug: string,
+  contentSelectors?: string[],
+): PortalRecord[] {
+  return groupRecords(flattenBlocks(html, contentSelectors))
     .filter((r) => r.parcels.cadastrals.length || r.parcels.uniqueNumbers.length)
     .map((r) => ({
       ...r,
