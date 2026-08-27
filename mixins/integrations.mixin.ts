@@ -260,15 +260,33 @@ export function IntegrationsMixin() {
         }
       },
 
-      async cleanupInvalidEvents(ctx: Context, apps: App | App[]) {
+      /**
+       * Soft-delete the app's events that this run did not re-confirm.
+       *
+       * `externalIdPrefix` narrows that to one source's own events. Several
+       * integrations now feed a single app — the land-use notices arrive from
+       * the central portal and from individual municipality sites — and each
+       * only knows the ids it collected itself. Without the prefix, whichever
+       * ran last would delete every event the others had just written.
+       */
+      async cleanupInvalidEvents(ctx: Context, apps: App | App[], externalIdPrefix?: string) {
         if (!Array.isArray(apps)) {
           apps = [apps];
         }
 
         const validExternalIds = this.validExternalIds || new Set();
-        const query = {
+        const query: any = {
           app: { $in: apps.map((a) => a.id) },
         };
+        if (externalIdPrefix) {
+          // $raw, not $like: the knex adapter implements only
+          // $eq/$ne/$in/$nin/$gt/$gte/$lt/$lte/$exists/$raw, and an unknown
+          // operator is not rejected — it is treated as a literal value, so a
+          // $like here would match nothing and quietly delete the lot.
+          // Column is snake_case in Postgres (knexSnakeCaseMappers).
+          const escaped = externalIdPrefix.replace(/'/g, "''");
+          query.$raw = `external_id LIKE '${escaped}%'`;
+        }
 
         const totalCount: number = await ctx.call('events.count', { query, scope: false });
         this.stats.invalid.removed = 0;

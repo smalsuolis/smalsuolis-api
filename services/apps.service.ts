@@ -10,9 +10,10 @@ enum APP_TYPES {
   izuvinimas = 'izuvinimas',
   miskoKirtimai = 'miskoKirtimai',
   zemetvarkosPlanavimas = 'zemetvarkosPlanavimas',
-  // Planned land-use changes scraped from municipal news pages — surfaces
-  // proposals while still in the public-comment stage (vs zemetvarkosPlanavimas
-  // which arrives post-approval). Per-municipality keys live under this type.
+  // Land-use-change notices published by municipalities — surfaces proposals
+  // while still in the public-comment stage (vs zemetvarkosPlanavimas, which
+  // arrives post-approval). One app for the whole country: the municipality of
+  // an event is carried by events.municipality, derived from its geometry.
   savivaldybesZemetvarka = 'savivaldybesZemetvarka',
 }
 
@@ -24,7 +25,7 @@ export const APP_KEYS = {
   miskoKirtimai: APP_TYPES.miskoKirtimai,
   izuvinimas: APP_TYPES.izuvinimas,
   zemetvarkosPlanavimas: APP_TYPES.zemetvarkosPlanavimas,
-  savivaldybesZemetvarkaVilnius: `${APP_TYPES.savivaldybesZemetvarka}-vilnius`,
+  savivaldybesZemetvarka: APP_TYPES.savivaldybesZemetvarka,
 };
 
 export const APP_TYPE = {
@@ -35,7 +36,7 @@ export const APP_TYPE = {
   [APP_KEYS.miskoKirtimai]: APP_TYPES.miskoKirtimai,
   [APP_KEYS.izuvinimas]: APP_TYPES.izuvinimas,
   [APP_KEYS.zemetvarkosPlanavimas]: APP_TYPES.zemetvarkosPlanavimas,
-  [APP_KEYS.savivaldybesZemetvarkaVilnius]: APP_TYPES.savivaldybesZemetvarka,
+  [APP_KEYS.savivaldybesZemetvarka]: APP_TYPES.savivaldybesZemetvarka,
 };
 
 export interface App extends CommonFields {

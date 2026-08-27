@@ -80,9 +80,15 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
     const { limit, initial } = ctx.params;
 
     const app: App = await ctx.call('apps.findOne', {
-      query: { key: APP_KEYS.savivaldybesZemetvarkaVilnius },
+      query: { key: APP_KEYS.savivaldybesZemetvarka },
     });
-    if (!app?.id) return;
+    // Returning quietly here used to make a key mismatch invisible: no throw,
+    // no lastRunError, so the watchdog saw a healthy integration that had in
+    // fact written nothing since the key moved underneath it.
+    if (!app?.id) {
+      this.finishIntegration();
+      throw new Error(`no app row for key ${APP_KEYS.savivaldybesZemetvarka} — refusing to run`);
+    }
 
     try {
       const items = await this.scrapeListing(ctx, limit);
