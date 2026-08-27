@@ -39,6 +39,11 @@ function normalizeCadastral(c: string): string {
   return `${m[1]}/${m[2]}:${m[3].padStart(4, '0')}`;
 }
 
+// This integration's events are identified by the article path, so every one of
+// them starts with this. Used to keep its cleanup off the other sources feeding
+// the same app.
+const VILNIUS_EXTERNAL_ID_PREFIX = '/naujienos/';
+
 const CATEGORY_QUERY = 'categories=65';
 const ARTICLE_BASE = 'https://vilnius.lt';
 const MAX_PAGES = 50;
@@ -122,7 +127,11 @@ export default class IntegrationsSavivaldybeZemetvarkaVilniusService extends mol
       }));
 
       await this.createOrUpdateEvents(ctx, app, events, initial);
-      await this.cleanupInvalidEvents(ctx, app);
+      // Scoped to this integration's own events. The portal integration feeds
+      // the same app, and its events — externalIds prefixed `portal:` — were
+      // not collected by this run, so an unscoped cleanup would delete them all.
+      // Vilnius externalIds are the article path, always starting `/naujienos/`.
+      await this.cleanupInvalidEvents(ctx, app, VILNIUS_EXTERNAL_ID_PREFIX);
       await this.recordRunSuccess(ctx, app);
       return this.finishIntegration();
     } catch (err: any) {

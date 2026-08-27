@@ -37,6 +37,11 @@ export type SourceRecord = {
  * whether any record was built from it. When it runs ahead of
  * `newestRecordDate`, the page is publishing and the parser is not keeping up —
  * the third case, stated rather than inferred.
+ *
+ * Only dates at or before the run date count towards it. These notices state a
+ * comment deadline weeks into the future, and a deadline is always later than
+ * the publication date it belongs to, so counting future dates would report
+ * every healthy municipality as behind.
  */
 export type MunicipalityRunStats = {
   slug: string;
@@ -66,6 +71,8 @@ export type Fetcher = (url: string) => Promise<string>;
 export type PortalOptions = {
   skipSlugs?: string[];
   onProgress?: (message: string) => void;
+  /** Run date, as `YYYY-MM-DD`. Injected so the gap check is testable. */
+  today?: string;
 };
 
 /**
@@ -80,6 +87,7 @@ export async function fetchPortalRecords(
   options: PortalOptions = {},
 ): Promise<SourceResult> {
   const skip = new Set(options.skipSlugs ?? []);
+  const today = options.today ?? new Date().toISOString().slice(0, 10);
   const sections = parseMunicipalityIndex(
     await fetcher(`${PORTAL_BASE}${MUNICIPALITY_INDEX_PATH}`),
   );
@@ -117,8 +125,8 @@ export async function fetchPortalRecords(
 
         for (const block of flattenBlocks(html)) {
           stat.blocks++;
-          const dates = extractDates(block.text);
-          const newest = dates[dates.length - 1];
+          const past = extractDates(block.text).filter((d) => d <= today);
+          const newest = past[past.length - 1];
           if (newest && (!stat.newestDateOnPage || newest > stat.newestDateOnPage)) {
             stat.newestDateOnPage = newest;
           }
