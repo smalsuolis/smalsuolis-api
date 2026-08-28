@@ -323,3 +323,39 @@ export function parsePortalPage(
       syntheticId: syntheticId(municipalitySlug, r.parcels, r.publishedAt, r.kind, sourcePrefix),
     }));
 }
+
+// Attachments, not the notice: the portal links the request PDF and its scans
+// alongside the municipality's own page for the same notice.
+// The extension can sit mid-path as well as at the end — document stores hang
+// an id after it, e.g. `…/2024-06-03+M-734.pdf/b053…`.
+const ATTACHMENT_RE = /\.(pdf|jpe?g|png|gif|docx?|xlsx?|zip)(\/|\?|#|$)/i;
+
+/**
+ * The municipality's own page for a notice, when the portal links to it.
+ *
+ * The portal keeps every notice on one long cumulative page, so linking a
+ * reader there drops them into a wall of hundreds of unrelated notices. Most
+ * records also carry a link to the municipality's own page for that one notice,
+ * which is what a reader actually wants to open.
+ *
+ * A bare domain is rejected. Several municipalities link only their homepage
+ * ("http://www.vilkaviskis.lt"), which tells a reader less than the portal page
+ * does — the point is to land on the notice, not on a council's front page.
+ */
+export function pickNoticeUrl(hrefs: string[], fallback: string): string {
+  for (const href of hrefs) {
+    if (!/^https?:\/\//i.test(href)) continue;
+    if (ATTACHMENT_RE.test(href)) continue;
+    let url: URL;
+    try {
+      url = new URL(href);
+    } catch {
+      continue;
+    }
+    if (/planuojustatau\.lt$/i.test(url.hostname)) continue;
+    // A path of "/" is the site's front page, not this notice.
+    if (url.pathname.replace(/\/+$/, '').length === 0) continue;
+    return href;
+  }
+  return fallback;
+}

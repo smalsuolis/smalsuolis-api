@@ -1,6 +1,6 @@
 import { ParcelIds } from './cadastral';
 import { extractDates } from './dates';
-import { flattenBlocks, parsePortalPage, RecordKind } from './records';
+import { flattenBlocks, parsePortalPage, pickNoticeUrl, RecordKind } from './records';
 import {
   MUNICIPALITY_INDEX_PATH,
   PORTAL_BASE,
@@ -151,7 +151,10 @@ export async function fetchPortalRecords(
             deadlineAt: record.deadlineAt,
             kind: record.kind,
             parcels: record.parcels,
-            url,
+            // The municipality's own page for this notice where the portal
+            // links it; the cumulative page otherwise, which is a wall of
+            // hundreds of unrelated notices to land a reader in.
+            url: pickNoticeUrl(record.hrefs, url),
           });
         }
       }

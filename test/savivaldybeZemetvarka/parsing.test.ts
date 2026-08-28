@@ -22,6 +22,7 @@ import {
   flattenBlocks,
   groupRecords,
   parsePortalPage,
+  pickNoticeUrl,
   syntheticId,
   isDateHeading,
 } from '../../utils/savivaldybeZemetvarka/records';
@@ -453,5 +454,45 @@ describe('a decision the notice is about, not one it cites', () => {
       'kad 2026-08-17 gautas prašymas (kadastro Nr. 3905/0009:4243).';
     const r = splitDates(extractDates(text), { text });
     assert.equal(r.publishedAt, '2026-08-17');
+  });
+});
+
+describe('linking a reader to the notice itself', () => {
+  const page = 'https://www.planuojustatau.lt/lt/planuoju_rtpd/vilniaus_m/pagal_20_2_2_nuo_202401';
+
+  it('prefers the municipality page over the cumulative portal page', () => {
+    // The portal keeps every notice on one page, so linking there drops a
+    // reader into hundreds of unrelated notices.
+    const hrefs = [
+      'https://vilnius.lt/rest//assets/5753886e.pdf',
+      'https://vilnius.lt/naujienos/informacija-apie-zemes-sklypo-kadastro-nr-010101590279',
+      'mailto:savivaldybe@vilnius.lt',
+    ];
+    assert.equal(
+      pickNoticeUrl(hrefs, page),
+      'https://vilnius.lt/naujienos/informacija-apie-zemes-sklypo-kadastro-nr-010101590279',
+    );
+  });
+
+  it('rejects a bare homepage', () => {
+    // Several municipalities link only their front page, which tells a reader
+    // less than the portal page does.
+    assert.equal(pickNoticeUrl(['http://www.vilkaviskis.lt'], page), page);
+    assert.equal(pickNoticeUrl(['http://www.siauliai.lt/'], page), page);
+  });
+
+  it('rejects attachments, including an extension mid-path', () => {
+    // Document stores hang an id after the extension.
+    assert.equal(pickNoticeUrl(['https://x.lt/a/2024-06-03+M-734.pdf/b053f1'], page), page);
+    assert.equal(pickNoticeUrl(['https://vilnius.lt/rest//assets/a.jpg'], page), page);
+  });
+
+  it('ignores the portal linking back to itself, and non-http links', () => {
+    assert.equal(pickNoticeUrl(['https://www.planuojustatau.lt/lt/kita'], page), page);
+    assert.equal(pickNoticeUrl(['/relative/path', 'mailto:a@b.lt'], page), page);
+  });
+
+  it('falls back to the page when the notice links nothing', () => {
+    assert.equal(pickNoticeUrl([], page), page);
   });
 });
