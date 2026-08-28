@@ -32,6 +32,20 @@ export type ResolvedParcel = {
 /** Keyed by the identifier as it was written in the notice. */
 export type ParcelLookup = Map<string, ResolvedParcel>;
 
+export type ParcelResolution = {
+  lookup: ParcelLookup;
+  /**
+   * True when the registry failed to answer for part of the batch.
+   *
+   * The caller must not retire anything on such a run: a record whose parcels
+   * went unresolved produces no event, so its id is absent from the run's list
+   * of what is still valid, and cleanup would read that as "the municipality
+   * stopped listing it" — soft-deleting up to a hundred live notices and
+   * re-creating them, with fresh timestamps, on the next successful run.
+   */
+  incomplete: boolean;
+};
+
 const chunk = <T>(items: T[], size: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -58,8 +72,9 @@ function toResolved(item: any): ResolvedParcel | null {
 export async function resolveParcels(
   ids: ParcelIds,
   onError?: (message: string) => void,
-): Promise<ParcelLookup> {
+): Promise<ParcelResolution> {
   const lookup: ParcelLookup = new Map();
+  let incomplete = false;
 
   for (const group of chunk(ids.cadastrals, CHUNK_SIZE)) {
     try {
@@ -77,6 +92,7 @@ export async function resolveParcels(
         if (resolved) lookup.set(resolved.cadastralNumber, resolved);
       }
     } catch (err: any) {
+      incomplete = true;
       onError?.(`cadastral chunk of ${group.length} failed: ${err?.message ?? err}`);
     }
   }
@@ -99,11 +115,12 @@ export async function resolveParcels(
         }
       }
     } catch (err: any) {
+      incomplete = true;
       onError?.(`unique-number chunk of ${group.length} failed: ${err?.message ?? err}`);
     }
   }
 
-  return lookup;
+  return { lookup, incomplete };
 }
 
 export type ParcelGeometry = {
@@ -160,4 +177,40 @@ export function buildGeometry(
     unresolved,
     wrongMunicipality,
   };
+}
+
+/**
+ * The municipality a set of parcels belongs to, taken from the registry's own
+ * answers rather than from a hand-kept mapping.
+ *
+ * A parcel identifier is easy to misread, and a misread one usually resolves to
+ * a real parcel somewhere else in the country. The majority answer for one
+ * municipality is what that municipality is; anything disagreeing with it was
+ * misread, and putting it on the map would place a notice in a stranger's
+ * subscription.
+ *
+ * Returns undefined below `minimumSupport`, because a source with a couple of
+ * notices says nothing about which municipality it is — and guessing there
+ * would reject the very parcels it was meant to protect.
+ */
+export function majorityMunicipalityCode(
+  writtenIds: string[],
+  lookup: ParcelLookup,
+  minimumSupport = 5,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const id of writtenIds) {
+    const code = lookup.get(id)?.municipalityCode;
+    if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+
+  let best: string | undefined;
+  let bestCount = 0;
+  for (const [code, count] of counts) {
+    if (count > bestCount) {
+      best = code;
+      bestCount = count;
+    }
+  }
+  return bestCount >= minimumSupport ? best : undefined;
 }

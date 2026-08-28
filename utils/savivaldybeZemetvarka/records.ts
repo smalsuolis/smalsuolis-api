@@ -253,16 +253,22 @@ export function groupRecords(blocks: Block[]): Omit<PortalRecord, 'syntheticId'>
       if (parcelSignature(blocks[i].text)) break;
     }
 
-    const dates = [...extractDates(text), ...extractDatesFromHrefs(hrefs)];
-    const { publishedAt, deadlineAt, publishedAtDerived } = splitDates(dates, {
+    // Href dates are a fallback for placing a notice in time, never evidence of
+    // a deadline: an upload path pins a year and month and says nothing about
+    // when comments close. Feeding them in alongside the text dates made the
+    // largest of them the deadline, so a notice dated 2026-01-15 with a
+    // /uploads/2026/03/ attachment advertised a comment period it never had.
+    const textDates = extractDates(text);
+    const { publishedAt, deadlineAt, publishedAtDerived } = splitDates(textDates, {
       headingDate,
       text,
     });
+    const fallbackDate = publishedAt ?? extractDatesFromHrefs(hrefs)[0] ?? null;
 
     return {
       title: collapse(own[0]?.text ?? '').slice(0, 500),
       body: text,
-      publishedAt,
+      publishedAt: fallbackDate,
       deadlineAt,
       publishedAtDerived,
       kind: classifyKind(text),

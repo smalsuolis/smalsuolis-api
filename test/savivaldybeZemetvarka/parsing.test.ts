@@ -20,6 +20,7 @@ import {
 import {
   classifyKind,
   flattenBlocks,
+  groupRecords,
   parsePortalPage,
   syntheticId,
   isDateHeading,
@@ -382,5 +383,75 @@ describe('HTML pasted out of Word', () => {
     assert.equal(records.length, 1);
     assert.equal(records[0].publishedAt, '2026-08-17');
     assert.deepEqual(records[0].parcels.cadastrals, ['3905/0009:4243']);
+  });
+});
+
+describe('dates a notice merely cites', () => {
+  // A notice routinely cites the decision or plan it acts under. Those dates are
+  // older than the notice, so taking the earliest plausible date picked the
+  // citation: a 2026 notice was dated 2023, and the mixin then treated it as
+  // historical, stamping created_at in 2023 — the notice reached nobody.
+  const text =
+    'Vadovaudamasis Tarybos 2023 m. gegužės 12 d. sprendimu Nr. T-118, informuojame, ' +
+    'kad 2026-08-17 gautas prašymas pakeisti žemės sklypo (kadastro Nr. 3905/0009:4243) paskirtį.';
+
+  it('does not date a notice by the decision it cites', () => {
+    const r = splitDates(extractDates(text), { text });
+    assert.equal(r.publishedAt, '2026-08-17');
+  });
+
+  it('still prefers a heading date over anything in the prose', () => {
+    const r = splitDates(extractDates(text), { text, headingDate: '2026-08-18' });
+    assert.equal(r.publishedAt, '2026-08-18');
+  });
+});
+
+describe('dates recovered from a PDF link', () => {
+  it('never becomes a deadline the notice did not state', () => {
+    // An upload path pins only a year and month, so it cannot mark the close of
+    // a comment period. Treated as one, a notice dated 2026-01-15 with a
+    // /uploads/2026/03/ attachment advertised "Pasiūlymai iki: 2026-03-01".
+    const records = groupRecords([
+      { text: '2026-01-15', hrefs: [] },
+      {
+        text: 'Gautas prašymas dėl žemės sklypo (kadastro Nr. 3905/0009:4243) paskirties keitimo',
+        hrefs: ['/sites/default/files/uploads/2026/03/prasymas.pdf'],
+      },
+    ]);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].publishedAt, '2026-01-15');
+    assert.equal(records[0].deadlineAt, null, 'an upload path is not a stated deadline');
+  });
+
+  it('still dates a notice whose only date is in the upload path', () => {
+    const records = groupRecords([
+      {
+        text: 'Informacija apie žemės sklypą (kadastro Nr. 3905/0009:4243)',
+        hrefs: ['/sites/default/files/uploads/2026/07/prasymas.pdf'],
+      },
+    ]);
+    assert.equal(records[0].publishedAt, '2026-07-01');
+  });
+});
+
+describe('a decision the notice is about, not one it cites', () => {
+  it('keeps the date of the order the notice announces', () => {
+    // Šiauliai publishes decisions as "Informuojame apie 2026-07-01 priimtą …
+    // mero potvarkį M-930". That date IS the notice's. Treating every date near
+    // the word "potvarkis" as a citation left 1,355 records undated across the
+    // country, and an undated record becomes no event at all.
+    const text =
+      'Informuojame apie 2026-07-01 priimtą Šiaulių miesto savivaldybės mero potvarkį M-930 ' +
+      '„Dėl žemės sklypo Draugystės pr. 18 (kadastro Nr. 2901/0012:402) naudojimo būdo pakeitimo“';
+    const r = splitDates(extractDates(text), { text });
+    assert.equal(r.publishedAt, '2026-07-01');
+  });
+
+  it('still drops the date of a decision the notice acts under', () => {
+    const text =
+      'Vadovaudamasis Tarybos 2023 m. gegužės 12 d. sprendimu Nr. T-118, informuojame, ' +
+      'kad 2026-08-17 gautas prašymas (kadastro Nr. 3905/0009:4243).';
+    const r = splitDates(extractDates(text), { text });
+    assert.equal(r.publishedAt, '2026-08-17');
   });
 });

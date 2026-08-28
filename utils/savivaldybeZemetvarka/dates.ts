@@ -116,6 +116,34 @@ const DEADLINE_HINT_RE =
 // notices state even when they never print the publication date itself.
 const WORKING_DAYS_RE = /(\d{1,2})\s*(?:darbo\s+dien\w*|d\.\s*d\.)/i;
 
+// `Vadovaudamasis Tarybos 2023 m. gegužės 12 d. sprendimu Nr. T-118` — a notice
+// cites the decision it acts under, and that date is older than the notice
+// itself, so taking the earliest date in a record picked the citation and dated
+// a 2026 notice to 2023. The mixin then treated it as historical and it reached
+// no subscriber.
+//
+// The case ending is what separates the two, and getting this wrong is
+// expensive in the other direction: Šiauliai announces its own decisions as
+// "Informuojame apie 2026-07-01 priimtą … mero potvarkį", where the date IS the
+// notice's. Matching the word stem alone left 1,355 records undated nationwide.
+// Only the instrumental — "sprendimu", "įsakymu", "potvarkiu", "patvirtintu",
+// answering "under what" — marks a document being cited; the accusative
+// ("potvarkį", "sprendimą") marks the one being announced.
+const CITATION_RE = new RegExp(
+  `(\\d{4}-\\d{2}-\\d{2}|\\d{4}\\s*m\\.?\\s*[a-ząčęėįšųūž]+\\s*\\d{1,2}\\s*d\\.?)` +
+    `[^.;]{0,40}?\\b(?:sprendimu|įsakymu|nutarimu|potvarkiu|patvirtint\\w*)\\b`,
+  'gi',
+);
+
+/** Dates that belong to a document the notice refers to, not to the notice. */
+export function extractCitedDates(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(CITATION_RE)) {
+    for (const iso of extractDates(m[1])) found.add(iso);
+  }
+  return [...found].sort();
+}
+
 /** Dates explicitly marked as a deadline by the wording around them. */
 export function extractDeadlineDates(text: string): string[] {
   const found = new Set<string>();
@@ -165,7 +193,8 @@ export function subtractWorkingDays(iso: string, days: number): string {
  * The rules that do hold, in order:
  *   - a heading date (a block that is nothing but a date) is authoritative;
  *   - a date introduced by "iki" is the deadline, never publication;
- *   - otherwise publication is the earliest plausible date in the record;
+ *   - a date attached to a decision the notice cites belongs to that decision;
+ *   - otherwise publication is the earliest plausible date left;
  *   - where the record gives only a deadline, publication is computed back
  *     across the comment window the notice itself states (Raseiniai writes
  *     "10 d. d. nuo prašymo paskelbimo datos (iki 2026-09-04)" and never prints
@@ -177,12 +206,16 @@ export function splitDates(
 ): DateSplit {
   const text = opts.text ?? '';
   const flagged = new Set(extractDeadlineDates(text));
+  const cited = new Set(extractCitedDates(text));
   const plausible = dates.filter((d) => d >= PUBLICATION_REGIME_START).sort();
-  const candidates = plausible.filter((d) => !flagged.has(d));
+  const candidates = plausible.filter((d) => !flagged.has(d) && !cited.has(d));
 
   const headingDate = opts.headingDate ?? null;
   const readPublishedAt = headingDate ?? (candidates.length ? candidates[0] : null);
-  const latest = plausible.length ? plausible[plausible.length - 1] : null;
+  const latest = (() => {
+    const usable = plausible.filter((d) => !cited.has(d));
+    return usable.length ? usable[usable.length - 1] : null;
+  })();
 
   if (readPublishedAt) {
     return {

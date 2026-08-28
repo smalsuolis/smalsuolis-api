@@ -150,8 +150,16 @@ async function readListing(
       let html: string;
       try {
         html = await fetcher(url);
-      } catch {
-        break;
+      } catch (err: any) {
+        // Not the same as running out of pages. Breaking quietly here made an
+        // unreachable page look like the end of the listing, so every notice on
+        // the pages never fetched was then retired as "no longer listed".
+        throw new Error(`${source.slug}: listing page ${url} unreachable: ${err?.message ?? err}`);
+      }
+      // A refusal arrives as a 200, so the listing page needs the same check as
+      // the notices do.
+      if (looksBlocked(html)) {
+        throw new Error(`${source.slug}: listing page ${url} was refused by the upstream firewall`);
       }
       stat.pages++;
 

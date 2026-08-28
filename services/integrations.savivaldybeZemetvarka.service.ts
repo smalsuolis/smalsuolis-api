@@ -8,7 +8,11 @@ import Cron from '@r2d2bzh/moleculer-cron';
 import { App, APP_KEYS } from './apps.service';
 import { Event, toEventBodyMarkdown } from './events.service';
 import { IntegrationsMixin } from '../mixins/integrations.mixin';
-import { buildGeometry, resolveParcels } from '../utils/savivaldybeZemetvarka/parcels';
+import {
+  buildGeometry,
+  majorityMunicipalityCode,
+  resolveParcels,
+} from '../utils/savivaldybeZemetvarka/parcels';
 import { ParcelIds } from '../utils/savivaldybeZemetvarka/cadastral';
 import {
   MunicipalityRunStats,
@@ -92,7 +96,21 @@ export default class IntegrationsSavivaldybeZemetvarkaService extends moleculer.
       }
 
       this.reportRunQuality(stats);
-      await this.writeEvents(ctx, app, records, PORTAL_PREFIX, ctx.params.initial);
+
+      // Cleanup is scoped to each municipality that was actually read, not to
+      // the portal as a whole. One municipality failing still leaves the other
+      // fifty-something with records, so the empty-run guard above does not
+      // fire — and a portal-wide cleanup would then retire every notice of the
+      // municipality that could not be reached.
+      const readOk = stats.filter((s) => !s.error).map((s) => `${PORTAL_PREFIX}${s.slug}:`);
+      const skipped = stats.filter((s) => s.error);
+      if (skipped.length) {
+        this.broker.logger.warn(
+          `[${this.name}] keeping existing events for ${skipped.length} municipalities that failed: ` +
+            skipped.map((s) => s.slug).join(', '),
+        );
+      }
+      await this.writeEvents(ctx, app, records, readOk, ctx.params.initial);
 
       await this.runMunicipalSources(ctx, app, ctx.params.initial);
 
@@ -167,7 +185,7 @@ export default class IntegrationsSavivaldybeZemetvarkaService extends moleculer.
           continue;
         }
 
-        await this.writeEvents(ctx, app, records, municipalCleanupPrefix(source.slug), initial);
+        await this.writeEvents(ctx, app, records, [municipalCleanupPrefix(source.slug)], initial);
       } catch (err: any) {
         this.broker.logger.error(
           `[${this.name}] ${source.slug} failed: ${err?.message ?? err} — other sources continue`,
@@ -182,12 +200,25 @@ export default class IntegrationsSavivaldybeZemetvarkaService extends moleculer.
     ctx: Context,
     app: App,
     records: SourceRecord[],
-    cleanupPrefix: string,
+    cleanupPrefixes: string[],
     initial: boolean,
   ) {
-    const events = await this.toEvents(ctx, app, this.dedupe(records));
+    const { events, incomplete } = await this.toEvents(ctx, app, this.dedupe(records));
     await this.createOrUpdateEvents(ctx, app, events, initial);
-    await this.cleanupInvalidEvents(ctx, app, cleanupPrefix);
+
+    // A record the registry could not answer for produces no event, so its id
+    // is missing from this run's valid list — and cleanup would read that as
+    // the notice having been withdrawn. Retiring anything on such a run
+    // soft-deletes live notices and re-creates them with fresh timestamps.
+    if (incomplete) {
+      this.broker.logger.warn(
+        `[${this.name}] registry answered only partially — skipping cleanup to avoid retiring live notices`,
+      );
+      return;
+    }
+    for (const prefix of cleanupPrefixes) {
+      await this.cleanupInvalidEvents(ctx, app, prefix);
+    }
   }
 
   @Method
@@ -223,7 +254,11 @@ export default class IntegrationsSavivaldybeZemetvarkaService extends moleculer.
   }
 
   @Method
-  async toEvents(ctx: Context, app: App, records: SourceRecord[]): Promise<Partial<Event>[]> {
+  async toEvents(
+    ctx: Context,
+    app: App,
+    records: SourceRecord[],
+  ): Promise<{ events: Partial<Event>[]; incomplete: boolean }> {
     const all: ParcelIds = {
       cadastrals: [...new Set(records.flatMap((r) => r.parcels.cadastrals))],
       uniqueNumbers: [...new Set(records.flatMap((r) => r.parcels.uniqueNumbers))],
@@ -232,18 +267,41 @@ export default class IntegrationsSavivaldybeZemetvarkaService extends moleculer.
       `[${this.name}] resolving ${all.cadastrals.length} cadastral and ` +
         `${all.uniqueNumbers.length} unique numbers`,
     );
-    const lookup = await resolveParcels(all, (m) => this.broker.logger.warn(`[${this.name}] ${m}`));
+    const { lookup, incomplete } = await resolveParcels(all, (m) =>
+      this.broker.logger.warn(`[${this.name}] ${m}`),
+    );
+
+    // Grouped per municipality: one run carries all sixty, and the majority
+    // answer only means anything within one of them.
+    const expectedCode = new Map<string, string | undefined>();
+    for (const slug of new Set(records.map((r) => r.municipalitySlug))) {
+      expectedCode.set(
+        slug,
+        majorityMunicipalityCode(
+          records
+            .filter((r) => r.municipalitySlug === slug)
+            .flatMap((r) => [...r.parcels.cadastrals, ...r.parcels.uniqueNumbers]),
+          lookup,
+        ),
+      );
+    }
 
     const events: Partial<Event>[] = [];
     let withoutGeometry = 0;
     let withoutDate = 0;
+    let misplaced = 0;
 
     for (const record of records) {
-      const geometry = buildGeometry(record.parcels, lookup);
+      const geometry = buildGeometry(
+        record.parcels,
+        lookup,
+        expectedCode.get(record.municipalitySlug),
+      );
       if (!geometry) {
         withoutGeometry++;
         continue;
       }
+      if (geometry.wrongMunicipality.length) misplaced += geometry.wrongMunicipality.length;
       // A notice we cannot date would be stamped with today's date and reach
       // subscribers as breaking news however old it is. Better omitted than
       // misdated.
@@ -274,8 +332,9 @@ export default class IntegrationsSavivaldybeZemetvarkaService extends moleculer.
 
     this.broker.logger.info(
       `[${this.name}] ${events.length} events from ${records.length} records ` +
-        `(dropped ${withoutGeometry} without geometry, ${withoutDate} without a date)`,
+        `(dropped ${withoutGeometry} without geometry, ${withoutDate} without a date, ` +
+        `${misplaced} parcels in another municipality)`,
     );
-    return events;
+    return { events, incomplete };
   }
 }

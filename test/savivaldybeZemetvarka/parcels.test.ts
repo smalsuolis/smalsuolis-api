@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildGeometry,
+  majorityMunicipalityCode,
   ParcelLookup,
   ResolvedParcel,
 } from '../../utils/savivaldybeZemetvarka/parcels';
@@ -90,5 +91,44 @@ describe('building a notice geometry', () => {
       lookup,
     );
     assert.deepEqual(g?.unresolved, ['9999/0009:0009']);
+  });
+});
+
+describe('deciding which municipality a source belongs to', () => {
+  const lookup = (entries: [string, string][]): ParcelLookup =>
+    new Map(entries.map(([id, code]) => [id, parcel(`${code}/0001:0001`, code)]));
+
+  it('takes the majority answer from the registry', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const map = lookup([
+      ['a', '43'],
+      ['b', '43'],
+      ['c', '43'],
+      ['d', '43'],
+      ['e', '43'],
+      ['f', '99'],
+    ]);
+    assert.equal(majorityMunicipalityCode(ids, map), '43');
+  });
+
+  it('declines to guess when too few parcels resolved', () => {
+    // A source with a couple of notices says nothing about which municipality
+    // it is, and guessing there would reject the very parcels it protects.
+    const map = lookup([
+      ['a', '43'],
+      ['b', '43'],
+    ]);
+    assert.equal(majorityMunicipalityCode(['a', 'b'], map), undefined);
+  });
+
+  it('ignores identifiers the registry did not resolve', () => {
+    const map = lookup([
+      ['a', '43'],
+      ['b', '43'],
+      ['c', '43'],
+      ['d', '43'],
+      ['e', '43'],
+    ]);
+    assert.equal(majorityMunicipalityCode([...'abcde', 'unknown'], map), '43');
   });
 });

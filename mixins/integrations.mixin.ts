@@ -6,6 +6,7 @@ import { Tag } from '../services/tags.service';
 import { Category } from '../services/categories.service';
 import { DBPagination } from '../types';
 import { classify } from '../utils/classifiers';
+import { externalIdPrefixClause } from '../utils/externalIdPrefix';
 
 // Cached at module level so all integration services share the same lookup —
 // categories are seed-only (rest:null) so this never needs invalidation.
@@ -283,9 +284,7 @@ export function IntegrationsMixin() {
           // $eq/$ne/$in/$nin/$gt/$gte/$lt/$lte/$exists/$raw, and an unknown
           // operator is not rejected — it is treated as a literal value, so a
           // $like here would match nothing and quietly delete the lot.
-          // Column is snake_case in Postgres (knexSnakeCaseMappers).
-          const escaped = externalIdPrefix.replace(/'/g, "''");
-          query.$raw = `external_id LIKE '${escaped}%'`;
+          query.$raw = externalIdPrefixClause(externalIdPrefix);
         }
 
         const totalCount: number = await ctx.call('events.count', { query, scope: false });
