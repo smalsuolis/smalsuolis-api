@@ -47,11 +47,14 @@ export type MunicipalityRunStats = {
   slug: string;
   name: string;
   pages: number;
-  bytes: number;
-  blocks: number;
-  blocksWithParcel: number;
   records: number;
   datedRecords: number;
+  /**
+   * Records whose publication date was computed back from a comment deadline
+   * rather than read. Raseiniai prints no publication date at all, so its dates
+   * rest entirely on that derivation — worth seeing in the log if it drifts.
+   */
+  derivedDates: number;
   newestDateOnPage: string | null;
   newestRecordDate: string | null;
   error?: string;
@@ -102,11 +105,9 @@ export async function fetchPortalRecords(
       slug: section.slug,
       name: section.name,
       pages: 0,
-      bytes: 0,
-      blocks: 0,
-      blocksWithParcel: 0,
       records: 0,
       datedRecords: 0,
+      derivedDates: 0,
       newestDateOnPage: null,
       newestRecordDate: null,
     };
@@ -121,10 +122,8 @@ export async function fetchPortalRecords(
       for (const path of paths) {
         const url = `${PORTAL_BASE}${path}`;
         const html = await fetcher(url);
-        stat.bytes += html.length;
 
         for (const block of flattenBlocks(html)) {
-          stat.blocks++;
           const past = extractDates(block.text).filter((d) => d <= today);
           const newest = past[past.length - 1];
           if (newest && (!stat.newestDateOnPage || newest > stat.newestDateOnPage)) {
@@ -134,7 +133,7 @@ export async function fetchPortalRecords(
 
         for (const record of parsePortalPage(html, section.slug)) {
           stat.records++;
-          stat.blocksWithParcel++;
+          if (record.publishedAtDerived) stat.derivedDates++;
           if (record.publishedAt) {
             stat.datedRecords++;
             if (!stat.newestRecordDate || record.publishedAt > stat.newestRecordDate) {
@@ -174,8 +173,9 @@ export function formatMunicipalityStat(s: MunicipalityRunStats): string {
     s.newestDateOnPage && (!s.newestRecordDate || s.newestRecordDate < s.newestDateOnPage)
       ? ` PARSER_BEHIND(page=${s.newestDateOnPage} parsed=${s.newestRecordDate ?? 'none'})`
       : '';
+  const derived = s.derivedDates ? ` derivedDates=${s.derivedDates}` : '';
   return (
-    `${s.slug}: pages=${s.pages} records=${s.records} dated=${s.datedRecords} ` +
+    `${s.slug}: pages=${s.pages} records=${s.records} dated=${s.datedRecords}${derived} ` +
     `newest=${s.newestRecordDate ?? 'none'}${lag}`
   );
 }

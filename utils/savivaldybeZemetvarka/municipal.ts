@@ -75,11 +75,9 @@ const emptyStats = (source: MunicipalSource): MunicipalityRunStats => ({
   slug: source.slug,
   name: source.name,
   pages: 0,
-  bytes: 0,
-  blocks: 0,
-  blocksWithParcel: 0,
   records: 0,
   datedRecords: 0,
+  derivedDates: 0,
   newestDateOnPage: null,
   newestRecordDate: null,
 });
@@ -103,7 +101,6 @@ async function readCumulative(
   for (const url of source.urls) {
     const html = await fetcher(url);
     stat.pages++;
-    stat.bytes += html.length;
     for (const rec of parsePortalPage(
       html,
       source.slug,
@@ -111,6 +108,7 @@ async function readCumulative(
       MUNICIPAL_PREFIX,
     )) {
       if (source.filterByContent && !isLandUseNotice(rec.body)) continue;
+      if (rec.publishedAtDerived) stat.derivedDates++;
       noteRecord(stat, rec.publishedAt);
       records.push({
         source: source.slug,
@@ -156,7 +154,6 @@ async function readListing(
         break;
       }
       stat.pages++;
-      stat.bytes += html.length;
 
       let added = 0;
       for (const a of parse(html).querySelectorAll('a[href]')) {
@@ -190,7 +187,6 @@ async function readListing(
       blocked++;
       continue;
     }
-    stat.bytes += html.length;
     const root = parse(html);
     const text = root
       .querySelectorAll('h1,h2,h3,p,td,li')
@@ -211,6 +207,7 @@ async function readListing(
       .trim()
       .slice(0, 500);
 
+    if (publishedAtDerived) stat.derivedDates++;
     noteRecord(stat, publishedAt);
     if (publishedAt && (!stat.newestDateOnPage || publishedAt > stat.newestDateOnPage)) {
       stat.newestDateOnPage = publishedAt;
@@ -227,7 +224,6 @@ async function readListing(
       kind,
       parcels,
       url: link,
-      ...(publishedAtDerived ? {} : {}),
     });
   }
 
@@ -336,7 +332,6 @@ export async function fetchMunicipalSource(
         : source.reader === 'listing'
         ? await readListing(source, fetcher, stat)
         : await readWpRest(source, fetcher, stat);
-    stat.blocksWithParcel = records.length;
     return { records, stats: [stat] };
   } catch (err: any) {
     stat.error = err?.message ?? String(err);

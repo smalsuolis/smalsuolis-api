@@ -53,11 +53,6 @@ export function normalizeUniqueNumber(raw: string): string | null {
   return `${m[1]}${m[2]}${m[3]}`;
 }
 
-/** The leading four digits of a cadastral number name the cadastral area. */
-export function cadastralAreaCode(normalizedCadastral: string): string {
-  return normalizedCadastral.slice(0, 4);
-}
-
 export type ParcelIds = {
   /** Normalised `NNNN/NNNN:NNNN`, sorted. */
   cadastrals: string[];

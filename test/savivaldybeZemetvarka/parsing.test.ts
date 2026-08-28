@@ -19,6 +19,7 @@ import {
 } from '../../utils/savivaldybeZemetvarka/dates';
 import {
   classifyKind,
+  flattenBlocks,
   parsePortalPage,
   syntheticId,
   isDateHeading,
@@ -350,5 +351,36 @@ describe('links written as absolute URLs', () => {
       parseMunicipalityIndex(index).map((s) => s.slug),
       ['zarasu_raj'],
     );
+  });
+});
+
+describe('HTML pasted out of Word', () => {
+  // These pages are authored by pasting from Word, which emits a paragraph
+  // nested inside a paragraph. Treating only childless elements as blocks threw
+  // the date away with the wrapper: Vilkaviškio r.'s 996 KB page read as 89
+  // notices ending 2024-12-20 when it holds 142 ending 2026-08-17 — a
+  // municipality that looked like it had gone quiet while still publishing.
+  const nested = `<div class="field--name-body">
+    <table><tr><td><p class="MsoNormal"><b><span>Data</span></b></p></td></tr>
+    <tr><td><p class="MsoNormal"><b><span>2026-08-17<p></p></span></b></p></td></tr>
+    <tr><td><p class="MsoNormal"><span>DĖL ŽEMĖS SKLYPO (KADASTRO NR. 3905/0009:4243)
+      PASKIRTIES PAKEITIMO<p></p></span></p></td></tr></table>
+  </div>`;
+
+  it('keeps text a nested paragraph would otherwise swallow', () => {
+    const texts = flattenBlocks(nested).map((b) => b.text);
+    assert.ok(
+      texts.some((t) => t.includes('2026-08-17')),
+      'the date must survive the Word wrapper',
+    );
+  });
+
+  it('does not repeat a wrapper’s text through its children', () => {
+    // The other half of the same rule: a block carries only what it owns, so a
+    // parcel mentioned once is not counted several times up the tree.
+    const records = parsePortalPage(nested, 'vilkaviskiu_raj');
+    assert.equal(records.length, 1);
+    assert.equal(records[0].publishedAt, '2026-08-17');
+    assert.deepEqual(records[0].parcels.cadastrals, ['3905/0009:4243']);
   });
 });
