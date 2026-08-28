@@ -288,13 +288,19 @@ export function syntheticId(
   parcels: ParcelIds,
   publishedAt: string | null,
   kind: RecordKind = 'unknown',
+  /**
+   * Which source produced it. Part of the id so each source's events can be
+   * cleaned up on their own — several feed one app, and a run only knows the
+   * ids it collected itself, so an unscoped cleanup would delete the rest.
+   */
+  sourcePrefix: string = 'portal',
 ): string {
   const parts = [...parcels.cadastrals, ...parcels.uniqueNumbers].join(',');
   const digest = createHash('sha1')
     .update(`${parts}|${publishedAt ?? ''}|${kind}`)
     .digest('hex')
     .slice(0, 12);
-  return `portal:${municipalitySlug}:${digest}`;
+  return `${sourcePrefix}:${municipalitySlug}:${digest}`;
 }
 
 /** Parse one municipality's notice page into identified records. */
@@ -302,11 +308,12 @@ export function parsePortalPage(
   html: string,
   municipalitySlug: string,
   contentSelectors?: string[],
+  sourcePrefix?: string,
 ): PortalRecord[] {
   return groupRecords(flattenBlocks(html, contentSelectors))
     .filter((r) => r.parcels.cadastrals.length || r.parcels.uniqueNumbers.length)
     .map((r) => ({
       ...r,
-      syntheticId: syntheticId(municipalitySlug, r.parcels, r.publishedAt, r.kind),
+      syntheticId: syntheticId(municipalitySlug, r.parcels, r.publishedAt, r.kind, sourcePrefix),
     }));
 }
