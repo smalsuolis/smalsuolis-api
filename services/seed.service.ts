@@ -86,7 +86,7 @@ export default class SeedService extends moleculer.Service {
     await this.infostatyba(ctx, apps.infostatyba);
     await this.fishStockings(ctx, apps.izuvinimas);
     await this.lumbering(ctx, apps.miskoKirtimai);
-    await this.vilnius(ctx, apps.savivaldybesZemetvarka);
+    await this.savivaldybesZemetvarka(ctx, apps.savivaldybesZemetvarka);
     return true;
   }
 
@@ -159,18 +159,15 @@ export default class SeedService extends moleculer.Service {
   }
 
   @Method
-  async vilnius(ctx: Context, appsIds: App['id'][]) {
-    await this.broker.waitForServices(['integrations.savivaldybeZemetvarka.vilnius', 'events']);
+  async savivaldybesZemetvarka(ctx: Context, appsIds: App['id'][]) {
+    await this.broker.waitForServices(['integrations.savivaldybeZemetvarka', 'events']);
 
     const count: number = await ctx.call('events.count', {
       query: { app: { $in: appsIds } },
     });
 
     if (!count) {
-      await ctx.call('integrations.savivaldybeZemetvarka.vilnius.getData', {
-        limit: process.env.NODE_ENV === 'local' ? 50 : 0,
-        initial: true,
-      });
+      await ctx.call('integrations.savivaldybeZemetvarka.getData', { initial: true });
     }
   }
 
