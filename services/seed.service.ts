@@ -49,11 +49,12 @@ const APPS = {
     description: 'Žemėtvarkos planavimo informacinė sistema',
     icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="m14.656 6.88l-14.656 9.984 9.952 4.96 12.48-12.256-7.776-2.688zm8.416 2.88l-7.424 7.584 7.84 6.304 8.544-10.752-8.96-3.136zm-7.872 8.064l-4.48 4.352 9.952 4.96 2.4-2.816-7.872-6.496z" fill="black"/></svg>`,
   },
-  [APP_KEYS.savivaldybesZemetvarkaVilnius]: {
-    type: APP_TYPE[APP_KEYS.savivaldybesZemetvarkaVilnius],
-    name: 'Žemės paskirties keitimas (Vilnius)',
+  [APP_KEYS.savivaldybesZemetvarka]: {
+    type: APP_TYPE[APP_KEYS.savivaldybesZemetvarka],
+    name: 'Žemės paskirties keitimas',
     description:
-      'Vilniaus miesto savivaldybės skelbiami prašymai keisti žemės sklypo paskirtį (viešo aptarimo etape)',
+      'Savivaldybių skelbiami prašymai ir sprendimai dėl žemės sklypo pagrindinės ' +
+      'žemės naudojimo paskirties ar naudojimo būdo keitimo',
     icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="9" height="14" rx="1"/><rect x="11" y="3" width="11" height="18" rx="1"/><path d="M5 10h3M5 14h3M14 6h4M14 10h4M14 14h4"/></svg>',
   },
 };
@@ -85,7 +86,7 @@ export default class SeedService extends moleculer.Service {
     await this.infostatyba(ctx, apps.infostatyba);
     await this.fishStockings(ctx, apps.izuvinimas);
     await this.lumbering(ctx, apps.miskoKirtimai);
-    await this.vilnius(ctx, apps.savivaldybesZemetvarka);
+    await this.savivaldybesZemetvarka(ctx, apps.savivaldybesZemetvarka);
     return true;
   }
 
@@ -158,18 +159,15 @@ export default class SeedService extends moleculer.Service {
   }
 
   @Method
-  async vilnius(ctx: Context, appsIds: App['id'][]) {
-    await this.broker.waitForServices(['integrations.savivaldybeZemetvarka.vilnius', 'events']);
+  async savivaldybesZemetvarka(ctx: Context, appsIds: App['id'][]) {
+    await this.broker.waitForServices(['integrations.savivaldybeZemetvarka', 'events']);
 
     const count: number = await ctx.call('events.count', {
       query: { app: { $in: appsIds } },
     });
 
     if (!count) {
-      await ctx.call('integrations.savivaldybeZemetvarka.vilnius.getData', {
-        limit: process.env.NODE_ENV === 'local' ? 50 : 0,
-        initial: true,
-      });
+      await ctx.call('integrations.savivaldybeZemetvarka.getData', { initial: true });
     }
   }
 

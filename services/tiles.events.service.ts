@@ -414,7 +414,18 @@ export default class TilesEventsService extends moleculer.Service {
 
   @Event()
   async 'integrations.sync.finished'() {
+    // Every cached cluster index has to go, not just the promises. They are
+    // keyed by the query they were built for, and the map always sends one —
+    // the user's app filter — so the index the map actually reads is never the
+    // unfiltered one rebuilt below. Clearing only the promises left every
+    // filtered index holding the events it was first built from: after an
+    // import that took an app from 76 events to 12,000, the map still drew 76
+    // while the counts beside it read 12,000. It affected every app's filtered
+    // view, and only a restart cleared it.
+    this.superclusters = {};
     this.superclustersPromises = {};
+    // Rebuilt eagerly for the unfiltered view; filtered ones rebuild lazily on
+    // the next tile request for that query.
     await this.renewSuperclusterIndex();
   }
 

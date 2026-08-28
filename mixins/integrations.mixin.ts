@@ -6,6 +6,7 @@ import { Tag } from '../services/tags.service';
 import { Category } from '../services/categories.service';
 import { DBPagination } from '../types';
 import { classify } from '../utils/classifiers';
+import { externalIdPrefixClause } from '../utils/externalIdPrefix';
 
 // Cached at module level so all integration services share the same lookup —
 // categories are seed-only (rest:null) so this never needs invalidation.
@@ -260,15 +261,31 @@ export function IntegrationsMixin() {
         }
       },
 
-      async cleanupInvalidEvents(ctx: Context, apps: App | App[]) {
+      /**
+       * Soft-delete the app's events that this run did not re-confirm.
+       *
+       * `externalIdPrefix` narrows that to one source's own events. Several
+       * integrations now feed a single app — the land-use notices arrive from
+       * the central portal and from individual municipality sites — and each
+       * only knows the ids it collected itself. Without the prefix, whichever
+       * ran last would delete every event the others had just written.
+       */
+      async cleanupInvalidEvents(ctx: Context, apps: App | App[], externalIdPrefix?: string) {
         if (!Array.isArray(apps)) {
           apps = [apps];
         }
 
         const validExternalIds = this.validExternalIds || new Set();
-        const query = {
+        const query: any = {
           app: { $in: apps.map((a) => a.id) },
         };
+        if (externalIdPrefix) {
+          // $raw, not $like: the knex adapter implements only
+          // $eq/$ne/$in/$nin/$gt/$gte/$lt/$lte/$exists/$raw, and an unknown
+          // operator is not rejected — it is treated as a literal value, so a
+          // $like here would match nothing and quietly delete the lot.
+          query.$raw = externalIdPrefixClause(externalIdPrefix);
+        }
 
         const totalCount: number = await ctx.call('events.count', { query, scope: false });
         this.stats.invalid.removed = 0;

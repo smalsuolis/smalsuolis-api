@@ -37,14 +37,19 @@ export const config = {
     process.env.WATCHDOG_STALENESS_THRESHOLD_MS ?? 8 * 24 * 60 * 60 * 1000,
   ),
   // Per-integration overrides for sources that legitimately publish in bursts,
-  // so their normal quiet spells don't page anyone. Thresholds picked from each
-  // source's observed max healthy gap (see PR): miskoKirtimai tops out ~7d →
-  // 12d; savivaldybe-vilnius (Vilnius land-use notices) tops out ~13d → 21d.
+  // so their normal quiet spells don't page anyone. Threshold picked from the
+  // source's observed max healthy gap (see PR): miskoKirtimai tops out ~7d → 12d.
   // Freshness is measured off real data (newest event / last insert), not the
   // cron-warmed lastUpdate — see freshnessAgeMs in checks.ts.
+  //
+  // savivaldybesZemetvarka had a 21d override while it covered Vilnius alone and
+  // could sit quiet for ~13d. Collecting all 60 municipalities it receives
+  // notices almost daily, so the 8d default is now the right alarm and a 21d one
+  // would hide a real break. Removing the entry rather than renaming its key also
+  // means a watchdog image built before the rename degrades to that same default
+  // instead of matching nothing.
   stalenessThresholdByAppKeyMs: {
     miskoKirtimai: 12 * 24 * 60 * 60 * 1000,
-    'savivaldybesZemetvarka-vilnius': 21 * 24 * 60 * 60 * 1000,
   } as Record<string, number>,
   alertCooldownMs: Number(process.env.WATCHDOG_ALERT_COOLDOWN_MS ?? 6 * 60 * 60 * 1000),
   livenessRepeatIntervalMs: Number(process.env.WATCHDOG_LIVENESS_REPEAT_MS ?? 30 * 60 * 1000),
