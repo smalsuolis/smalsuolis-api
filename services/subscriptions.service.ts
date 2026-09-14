@@ -59,7 +59,7 @@ export type Subscription<
     DbConnection({
       collection: 'subscriptions',
     }),
-    PostgisMixin({ srid: LKS_SRID }),
+    PostgisMixin({ srid: LKS_SRID, geojson: { maxDecimalDigits: 2 } }),
   ],
   settings: {
     fields: {
