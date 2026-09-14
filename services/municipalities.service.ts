@@ -138,6 +138,15 @@ export default class MunicipalitiesService extends moleculer.Service {
     const knex: Knex = adapter.client;
     const batchSize = ctx.params.batchSize || 20000;
 
+    // Seed calls this on every boot, and the loop below costs a spatial UPDATE
+    // per batch even when there is nothing left to assign.
+    const { rows: pending } = await knex.raw(
+      `SELECT 1 FROM events WHERE municipality_id IS NULL AND geom IS NOT NULL LIMIT 1`,
+    );
+    if (!pending.length) {
+      return { updated: 0, batches: 0, note: 'nothing to backfill' };
+    }
+
     const { rows: bounds } = await knex.raw(
       `SELECT min(id)::bigint AS min, max(id)::bigint AS max FROM events`,
     );
