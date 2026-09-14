@@ -82,6 +82,11 @@ export default class SeedService extends moleculer.Service {
 
     await this.seedCategories(ctx);
 
+    // Before the integrations: events are stamped by an after-create hook that
+    // matches their geom against these polygons, so a first run only assigns
+    // what it ingests if they are already there.
+    await this.municipalities(ctx);
+
     await this.landManagementPlanning(ctx, apps.zemetvarkosPlanavimas);
     await this.infostatyba(ctx, apps.infostatyba);
     await this.fishStockings(ctx, apps.izuvinimas);
@@ -155,6 +160,27 @@ export default class SeedService extends moleculer.Service {
         });
         idByCode.set(node.code, created.id);
       }
+    }
+  }
+
+  // The polygons come from boundaries.biip.lt, so no migration can carry them
+  // and a fresh environment starts empty — which left production with a null
+  // municipality on every event and nothing failing loudly enough to notice.
+  @Method
+  async municipalities(ctx: Context) {
+    await this.broker.waitForServices(['municipalities', 'events']);
+
+    try {
+      const count: number = await ctx.call('municipalities.count');
+      if (!count) {
+        await ctx.call('municipalities.import', {}, { timeout: 10 * 60 * 1000 });
+      }
+
+      await ctx.call('municipalities.backfillEvents', {}, { timeout: 60 * 60 * 1000 });
+    } catch (err: any) {
+      // This runs ahead of the integrations, so a boundaries outage must cost
+      // the municipality assignment only, not every event seeded after it.
+      this.logger.error(`[seed.municipalities] ${err?.message ?? err}`);
     }
   }
 
