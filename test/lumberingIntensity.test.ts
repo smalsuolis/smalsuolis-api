@@ -46,6 +46,15 @@ describe('how much of a permitted stand a cut actually clears', () => {
     );
   });
 
+  // The registry writes one name per permit and has changed its wording before.
+  // A plural or a different declension must not quietly drop to a quarter.
+  it('recognises the declensions of a name it already knows', () => {
+    assert.equal(lumberingIntensity('Plyni kirtimai'), 1);
+    assert.equal(lumberingIntensity('Plynieji sanitariniai kirtimai'), 1);
+    assert.equal(lumberingIntensity('Atvejiniai kirtimai'), 0.5);
+    assert.equal(lumberingIntensity('Supaprastinti atvejiniai kirtimai'), 0.5);
+  });
+
   it('falls back to a quarter for a name the feed has not used before', () => {
     assert.equal(lumberingIntensity('Visiškai naujas kirtimo tipas'), 0.25);
     assert.equal(lumberingIntensity(''), 0.25);

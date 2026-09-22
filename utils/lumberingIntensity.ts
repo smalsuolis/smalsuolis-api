@@ -5,13 +5,17 @@
 //
 // Matched by PREFIX, never by substring — "Kiti specialieji miško kirtimai (Bt,
 // D, Gl, Bl kirtimas neplynaisiais kirtimais)" contains "plynais" and is a
-// quarter-intensity cut.
+// quarter-intensity cut, but does not start with one of these.
+//
+// Stemmed rather than spelled out in full, because an unrecognised name falls
+// to the quarter share silently — the very failure this table exists to undo.
+// "Plyn" and "Atvejin" cover the declensions the registry has used so far and
+// the plurals it could start using ("Plyni kirtimai", "Atvejiniai kirtimai").
 const INTENSITY_BY_PREFIX: Array<[prefix: string, share: number]> = [
-  ['Plynas', 1],
+  ['Plyn', 1],
   ['Miško lydimo', 1],
-  ['Atvejinis', 0.5],
-  ['Atvejinių', 0.5],
-  ['Supaprastintas atvejinis', 0.5],
+  ['Atvejin', 0.5],
+  ['Supaprastint', 0.5],
 ];
 
 const DEFAULT_INTENSITY = 0.25;
