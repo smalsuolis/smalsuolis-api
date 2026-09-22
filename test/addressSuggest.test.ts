@@ -5,9 +5,12 @@ import {
   buildAddressFilters,
   buildLabel,
   buildNameFilters,
+  clearCodeCache,
+  CodeSet,
   collectCodes,
   WalkGuard,
   parseAddressInput,
+  resolveCodes,
   toSuggestions,
 } from '../utils/addressSuggest';
 
@@ -291,5 +294,62 @@ describe('collectCodes', () => {
   it('treats a missing total as small rather than walking forever', async () => {
     const result = await collectCodes(async () => page([7], null as unknown as number));
     assert.deepEqual(result, { codes: [7], complete: true });
+  });
+});
+
+describe('resolveCodes', () => {
+  it('asks the registry once for a name it has already resolved', async () => {
+    clearCodeCache();
+    let calls = 0;
+    const resolve = async (): Promise<CodeSet> => {
+      calls++;
+      return { codes: [1, 2], complete: true };
+    };
+
+    assert.deepEqual(await resolveCodes('street:gedimino pr.', resolve), {
+      codes: [1, 2],
+      complete: true,
+    });
+    assert.deepEqual(await resolveCodes('street:gedimino pr.', resolve), {
+      codes: [1, 2],
+      complete: true,
+    });
+    assert.equal(calls, 1, 'the second lookup must not reach the registry');
+  });
+
+  it('keeps street and area answers apart', async () => {
+    clearCodeCache();
+    await resolveCodes('street:sodu g.', async () => ({ codes: [7], complete: true }));
+    const area = await resolveCodes('area:sodu g.', async () => ({ codes: [9], complete: true }));
+    assert.deepEqual(area.codes, [9]);
+  });
+
+  // A give-up is either "too many matches" or a registry 500, and the two are
+  // indistinguishable here. Caching it would pin the slow path for a whole day.
+  it('never caches a set it gave up on', async () => {
+    clearCodeCache();
+    let calls = 0;
+    const resolve = async (): Promise<CodeSet> => {
+      calls++;
+      return { codes: [], complete: false };
+    };
+
+    await resolveCodes('street:sod', resolve);
+    await resolveCodes('street:sod', resolve);
+    assert.equal(calls, 2, 'an incomplete set must be retried, not remembered');
+  });
+
+  it('retries a name the registry failed on, and keeps the answer once it works', async () => {
+    clearCodeCache();
+    let calls = 0;
+    const resolve = async (): Promise<CodeSet> => {
+      calls++;
+      return calls === 1 ? { codes: [], complete: false } : { codes: [42], complete: true };
+    };
+
+    assert.deepEqual((await resolveCodes('street:vilniaus g.', resolve)).codes, []);
+    assert.deepEqual((await resolveCodes('street:vilniaus g.', resolve)).codes, [42]);
+    assert.deepEqual((await resolveCodes('street:vilniaus g.', resolve)).codes, [42]);
+    assert.equal(calls, 2);
   });
 });

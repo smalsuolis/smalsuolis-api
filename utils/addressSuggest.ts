@@ -113,6 +113,39 @@ export interface WalkGuard {
   givenUp: boolean;
 }
 
+// Resolving a name to codes is ~65% of a suggestion's wall clock (0.33-0.83s out
+// of 0.55-1.20s, measured against the registry), and it asks a question whose
+// answer never moves: street and area names are static. It is also asked over
+// and over, because the street part is what survives every keystroke of a house
+// number - "Gedimino pr.", "Gedimino pr. 9" and "Gedimino pr. 91" all resolve
+// the same two names. So memoise on the name, where the whole-query cache in the
+// service cannot help.
+const CODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CODE_CACHE_MAX_ENTRIES = 2000;
+const codeCache = new Map<string, { value: CodeSet; expiry: number }>();
+
+export const clearCodeCache = () => codeCache.clear();
+
+export const resolveCodes = async (
+  key: string,
+  resolve: () => Promise<CodeSet>,
+): Promise<CodeSet> => {
+  const hit = codeCache.get(key);
+  if (hit && Date.now() < hit.expiry) return hit.value;
+
+  const value = await resolve();
+  // An incomplete set is never cached. Giving up means either "the name matches
+  // more streets than we walk" or "the registry answered 500", and the two look
+  // identical here - caching the blip would pin the slow path for a day.
+  if (!value.complete) return value;
+
+  if (codeCache.size >= CODE_CACHE_MAX_ENTRIES) {
+    codeCache.delete(codeCache.keys().next().value);
+  }
+  codeCache.set(key, { value, expiry: Date.now() + CODE_CACHE_TTL_MS });
+  return value;
+};
+
 // Walk a cursor-paginated name search and collect every matching code.
 export const collectCodes = async (
   fetchPage: (cursor?: string) => Promise<CodePage>,
@@ -168,24 +201,29 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
   // a guard so that when one gives up the other stops at its next page instead
   // of walking to the end for a result nothing will use.
   const guard: WalkGuard = { givenUp: false };
+  const cacheKey = street.toLowerCase();
   const [streets, areas] = await Promise.all([
-    collectCodes(
-      (cursor) =>
-        streetsSearch({
-          requestBody: { filters: [{ streets: { name: { contains: street } } }] },
-          size: PAGE_SIZE,
-          cursor,
-        }),
-      guard,
+    resolveCodes(`street:${cacheKey}`, () =>
+      collectCodes(
+        (cursor) =>
+          streetsSearch({
+            requestBody: { filters: [{ streets: { name: { contains: street } } }] },
+            size: PAGE_SIZE,
+            cursor,
+          }),
+        guard,
+      ),
     ),
-    collectCodes(
-      (cursor) =>
-        residentialAreasSearch({
-          requestBody: { filters: [{ residential_areas: { name: { contains: street } } }] },
-          size: PAGE_SIZE,
-          cursor,
-        }),
-      guard,
+    resolveCodes(`area:${cacheKey}`, () =>
+      collectCodes(
+        (cursor) =>
+          residentialAreasSearch({
+            requestBody: { filters: [{ residential_areas: { name: { contains: street } } }] },
+            size: PAGE_SIZE,
+            cursor,
+          }),
+        guard,
+      ),
     ),
   ]);
 
