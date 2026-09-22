@@ -17,6 +17,7 @@ import {
 } from '../types';
 import { App, APP_TYPE } from './apps.service';
 import { LKS_SRID, parseToJsonIfNeeded } from '../utils';
+import { lumberingIntensity } from '../utils/lumberingIntensity';
 import { Subscription } from './subscriptions.service';
 import { Tag } from './tags.service';
 import { Category } from './categories.service';
@@ -306,43 +307,28 @@ export default class EventsService extends moleculer.Service {
       .leftJoin('apps', 'events.appId', 'apps.id')
       .groupBy('municipalities.name', 'apps.key');
 
-    const eventsCountByTagData = await knex
-      .select(knex.raw('td.tag_id::numeric'), 'td.tagName')
+    // Declared felling area per tag. `tags_data[].value` is the `kertamas_plotas`
+    // the lumbering feed gives in hectares; `name` there is always the literal
+    // 'area' (the measure), so the cutting type has to come from the tag itself —
+    // see the forEach below, where tagsById resolves it.
+    const eventsAreaByTagId = await knex
+      .select(knex.raw('elem.tag_id::numeric as tag_id'))
       .sum({
-        count: knex.raw("(NULLIF(regexp_replace(td.tag_value, '[^0-9.]', '', 'g'), ''))::numeric"),
+        areaHa: knex.raw(
+          "(NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric",
+        ),
       })
-      .sum({ area: knex.raw('td.tag_value_area::numeric') })
       .from(
         knex
           .select(
-            'elem.tag_id',
-            'elem.tag_name',
-            'elem.tag_value',
-            knex.raw(`
-              CASE 
-                WHEN elem.tag_name IN ('Plynas', 'Plynas sanitarinis', 'Lydimo') THEN 
-                  (NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric * 1
-                WHEN elem.tag_name = 'Atvejiniai' THEN 
-                  (NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric * 0.5
-                ELSE 
-                  (NULLIF(regexp_replace(elem.tag_value, '[^0-9.]', '', 'g'), ''))::numeric * 0.25
-              END as tag_value_area
-            `),
+            knex.raw(`jsonb_array_elements(events.tags_data)->>'id' as tag_id`),
+            knex.raw(`jsonb_array_elements(events.tags_data)->>'value' as tag_value`),
           )
-          .from(
-            knex
-              .select(
-                knex.raw(`jsonb_array_elements(events.tags_data)->>'id' as tag_id`),
-                knex.raw(`jsonb_array_elements(events.tags_data)->>'name' as tag_name`),
-                knex.raw(`jsonb_array_elements(events.tags_data)->>'value' as tag_value`),
-              )
-              .from(eventsQuery.as('events'))
-              .whereNotNull('events.tagsData')
-              .as('elem'),
-          )
-          .as('td'),
+          .from(eventsQuery.as('events'))
+          .whereNotNull('events.tagsData')
+          .as('elem'),
       )
-      .groupBy(['tagId', 'tagName']);
+      .groupBy('tagId');
 
     const stats: {
       count: number;
@@ -399,39 +385,37 @@ export default class EventsService extends moleculer.Service {
 
     // byMunicipality: keyed by municipality name; each has a total count plus a
     // per-appType split (app.key → APP_TYPE, same mapping as byCategory).
-    eventsCountByMunicipality?.forEach((item: { municipality: string; appKey: string; count: any }) => {
-      if (!item.municipality) return;
-      const appType = APP_TYPE[item.appKey];
-      const count = Number(item.count);
+    eventsCountByMunicipality?.forEach(
+      (item: { municipality: string; appKey: string; count: any }) => {
+        if (!item.municipality) return;
+        const appType = APP_TYPE[item.appKey];
+        const count = Number(item.count);
 
-      const totalPath = ['byMunicipality', item.municipality, 'count'];
-      _.set(stats, totalPath, _.get(stats, totalPath, 0) + count);
+        const totalPath = ['byMunicipality', item.municipality, 'count'];
+        _.set(stats, totalPath, _.get(stats, totalPath, 0) + count);
 
-      if (appType) {
-        const appPath = ['byMunicipality', item.municipality, 'byApp', appType];
-        _.set(stats, appPath, _.get(stats, appPath, 0) + count);
-      }
-    });
+        if (appType) {
+          const appPath = ['byMunicipality', item.municipality, 'byApp', appType];
+          _.set(stats, appPath, _.get(stats, appPath, 0) + count);
+        }
+      },
+    );
 
-    eventsCountByTagData?.forEach((item) => {
+    eventsAreaByTagId?.forEach((item) => {
       const tag = tagsById[item.tagId];
-      const count = Number(item.count || 0);
-      const area = Number(item.area || 0);
+      if (!tag) return;
 
-      const categoryAreaPath = ['byApp', tag.appType, 'byTag', tag.name, 'area'];
-      const categoryCalculatedAreaPath = [
-        'byApp',
-        tag.appType,
-        'byTag',
-        tag.name,
-        'calculatedArea',
-      ];
+      const areaHa = Number(item.areaHa || 0);
+      const basePath = ['byApp', tag.appType, 'byTag', tag.name];
+      const areaPath = [...basePath, 'area'];
+      const calculatedAreaPath = [...basePath, 'calculatedArea'];
 
-      const existingArea = _.get(stats, categoryAreaPath, 0);
-      const existingCalculatedArea = _.get(stats, categoryCalculatedAreaPath, 0);
-
-      _.set(stats, categoryAreaPath, existingArea + count);
-      _.set(stats, categoryCalculatedAreaPath, existingCalculatedArea + area);
+      _.set(stats, areaPath, _.get(stats, areaPath, 0) + areaHa);
+      _.set(
+        stats,
+        calculatedAreaPath,
+        _.get(stats, calculatedAreaPath, 0) + areaHa * lumberingIntensity(tag.name),
+      );
     });
 
     if (this.statsCache.size >= this.STATS_CACHE_MAX_ENTRIES) {
@@ -462,9 +446,7 @@ export default class EventsService extends moleculer.Service {
     },
     timeout: 30 * 1000,
   })
-  async near(
-    ctx: Context<{ lng: number; lat: number; radius?: number; limit?: number }>,
-  ) {
+  async near(ctx: Context<{ lng: number; lat: number; radius?: number; limit?: number }>) {
     const { lng, lat } = ctx.params;
     const radius = ctx.params.radius ?? 2000;
     const limit = ctx.params.limit ?? 5;
