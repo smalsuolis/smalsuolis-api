@@ -9,8 +9,13 @@ import {
   CodeSet,
   collectCodes,
   WalkGuard,
+  localityStem,
+  orderByPlaceKind,
+  orderMunicipalities,
   parseAddressInput,
+  rankByPlace,
   resolveCodes,
+  spreadByPlace,
   toSuggestions,
 } from '../utils/addressSuggest';
 
@@ -64,13 +69,15 @@ describe('parseAddressInput', () => {
     });
   });
 
-  it('drops the locality hint after the first comma', () => {
+  it('keeps the place named after the first comma', () => {
     assert.deepEqual(parseAddressInput('Vilniaus g. 2, Kaunas'), {
       street: 'Vilniaus g.',
       houseNumber: '2',
+      locality: 'Kaunas',
     });
     assert.deepEqual(parseAddressInput('Kaltinėnų mstl., Šilalės r.'), {
       street: 'Kaltinėnų mstl.',
+      locality: 'Šilalės r.',
     });
   });
 
@@ -78,6 +85,92 @@ describe('parseAddressInput', () => {
     // The registry has no such split for "Kalno 3-oji g." — the trailing token
     // must start with a digit AND end the input.
     assert.deepEqual(parseAddressInput('Kalno 3-oji g.'), { street: 'Kalno 3-oji g.' });
+  });
+});
+
+describe('localityStem', () => {
+  it('cuts the nominative ending the registry never uses', () => {
+    // The registry holds "Vilniaus m. sav.", "Kauno m. sav.", "Jurbarko r. sav."
+    for (const [typed, stem] of [
+      ['Vilnius', 'Viln'],
+      ['Kaunas', 'Kaun'],
+      ['Jurbarkas', 'Jurbark'],
+      ['Klaipėda', 'Klaipėd'],
+      // Plural nominatives need the whole ending gone: "Šiaulių", not "Šiaulia".
+      ['Šiauliai', 'Šiaul'],
+      ['Panevėžys', 'Panevėž'],
+      ['Alytus', 'Alyt'],
+    ] as const) {
+      assert.equal(localityStem(typed), stem, typed);
+    }
+  });
+
+  it('drops the kind the registry spells out itself', () => {
+    assert.equal(localityStem('Šilalės r.'), 'Šilal');
+    assert.equal(localityStem('Vilniaus m.'), 'Viln');
+  });
+
+  it('keeps a name too short to cut', () => {
+    assert.equal(localityStem('Ada'), 'Ada');
+  });
+});
+
+describe('rankByPlace', () => {
+  it('puts the town ahead of the village', () => {
+    const village = address({ residential_area: { code: 1, feature_id: 1, name: 'Škėvonių k.' } });
+    const city = address({ residential_area: { code: 2, feature_id: 2, name: 'Vilniaus m.' } });
+    const town = address({ residential_area: { code: 3, feature_id: 3, name: 'Kamajų mstl.' } });
+
+    assert.deepEqual(
+      rankByPlace([village, city, town]).map((a) => a.residential_area?.name),
+      ['Vilniaus m.', 'Kamajų mstl.', 'Škėvonių k.'],
+    );
+  });
+
+  it('reads the named place in the order its codes were resolved in', () => {
+    const district = address({
+      municipality: {
+        code: 41,
+        feature_id: 9,
+        name: 'Vilniaus r. sav.',
+        county: { code: 10, feature_id: 1, name: 'Vilniaus apskr.' },
+      },
+      residential_area: { code: 1, feature_id: 1, name: 'Nemenčinės m.' },
+    });
+    const city = address();
+
+    assert.deepEqual(
+      rankByPlace([district, city], [13, 41]).map((a) => a.municipality?.name),
+      ['Vilniaus m. sav.', 'Vilniaus r. sav.'],
+    );
+  });
+
+  it('prefers a city municipality when no place was named', () => {
+    const district = address({
+      municipality: {
+        code: 41,
+        feature_id: 9,
+        name: 'Biržų r. sav.',
+        county: { code: 10, feature_id: 1, name: 'Vilniaus apskr.' },
+      },
+      residential_area: { code: 1, feature_id: 1, name: 'Biržų m.' },
+    });
+    const city = address();
+
+    assert.deepEqual(
+      rankByPlace([district, city]).map((a) => a.municipality?.name),
+      ['Vilniaus m. sav.', 'Biržų r. sav.'],
+    );
+  });
+
+  it('leaves rows it cannot place at the end, in the order they came', () => {
+    const unknown = address({ residential_area: null });
+    const city = address({ residential_area: { code: 2, feature_id: 2, name: 'Vilniaus m.' } });
+
+    assert.deepEqual(
+      rankByPlace([unknown, city]).map((a) => a.residential_area?.name ?? null),
+      ['Vilniaus m.', null],
+    );
   });
 });
 
@@ -94,6 +187,28 @@ describe('buildLabel', () => {
   it('falls back to the residential area when there is no street', () => {
     const label = buildLabel(address({ street: null, plot_or_building_number: '5' }));
     assert.equal(label, 'Vilniaus m. 5, Vilniaus m. sav.');
+  });
+
+  it('names the settlement that tells two rows apart', () => {
+    const label = buildLabel(
+      address({
+        street: { code: 1, feature_id: 1, name: 'Lauko g.', full_name: 'Lauko g.' },
+        plot_or_building_number: '6',
+        residential_area: { code: 9, feature_id: 9, name: 'Skirsnemunės k.' },
+        municipality: {
+          code: 55,
+          feature_id: 9,
+          name: 'Jurbarko r. sav.',
+          county: { code: 10, feature_id: 1, name: 'Vilniaus apskr.' },
+        },
+      }),
+    );
+    assert.equal(label, 'Lauko g. 6, Skirsnemunės k., Jurbarko r. sav.');
+  });
+
+  it('leaves out a settlement that only says the municipality again', () => {
+    // "Vilniaus m." inside "Vilniaus m. sav." tells a reader nothing new.
+    assert.equal(buildLabel(address()), 'Gedimino pr. 38, Vilniaus m. sav.');
   });
 
   it('never starts with a stray comma when nothing names the place', () => {
@@ -129,6 +244,18 @@ describe('buildAddressFilters', () => {
     assert.deepEqual(buildAddressFilters({ streetCodes: [], areaCodes: [9] }), [
       { residential_areas: { codes: [9] } },
     ]);
+  });
+
+  it('narrows both branches by the place someone named', () => {
+    // By code, not by name: filtering addresses on a joined municipality NAME is
+    // the same full scan the code lookup exists to avoid.
+    assert.deepEqual(
+      buildAddressFilters({ streetCodes: [1], areaCodes: [9], municipalityCodes: [13] }),
+      [
+        { streets: { codes: [1] }, municipalities: { codes: [13] } },
+        { residential_areas: { codes: [9] }, municipalities: { codes: [13] } },
+      ],
+    );
   });
 
   it('returns nothing when neither name matched', () => {
@@ -174,6 +301,13 @@ describe('buildNameFilters', () => {
     ]);
   });
 
+  it('narrows both branches by the resolved place', () => {
+    assert.deepEqual(buildNameFilters('Sodo g.', undefined, [13]), [
+      { streets: { name: { contains: 'Sodo g.' } }, municipalities: { codes: [13] } },
+      { residential_areas: { name: { contains: 'Sodo g.' } }, municipalities: { codes: [13] } },
+    ]);
+  });
+
   it('narrows only the street branch by house number', () => {
     assert.deepEqual(buildNameFilters('Sodo g.', '1'), [
       {
@@ -182,6 +316,61 @@ describe('buildNameFilters', () => {
       },
       { residential_areas: { name: { contains: 'Sodo g.' } } },
     ]);
+  });
+});
+
+describe('orderMunicipalities', () => {
+  const found = [
+    {
+      code: 41,
+      name: 'Vilniaus r. sav.',
+      county: { code: 10, feature_id: 1, name: 'Vilniaus apskr.' },
+    },
+    { code: 13, name: 'Vilniaus m. sav.' },
+  ];
+
+  it('reads a bare city name as the city, not the district around it', () => {
+    assert.deepEqual(orderMunicipalities(found, 'Vilnius'), [13, 41]);
+  });
+
+  it('honours the kind when it was typed', () => {
+    assert.deepEqual(orderMunicipalities(found, 'Vilniaus r.'), [41, 13]);
+    assert.deepEqual(orderMunicipalities(found, 'Vilniaus m. sav.'), [13, 41]);
+  });
+});
+
+describe('orderByPlaceKind', () => {
+  const rows = [
+    { code: 1, residential_area: { name: 'Škėvonių k.' } },
+    { code: 2, residential_area: { name: 'Grigiškių m.' } },
+    { code: 3, residential_area: { name: 'Vilniaus m.' } },
+    { code: 4, residential_area: { name: 'Kamajų mstl.' } },
+  ];
+
+  it('asks about the cities first, then the towns, then the villages', () => {
+    assert.deepEqual(orderByPlaceKind(rows, ['Vilniaus m.']), [3, 2, 4, 1]);
+  });
+
+  it('ranks a settlement row by its own name', () => {
+    assert.deepEqual(
+      orderByPlaceKind([{ code: 7, name: 'Kaltinėnų mstl.' }, ...rows]),
+      [2, 3, 7, 4, 1],
+    );
+  });
+});
+
+describe('spreadByPlace', () => {
+  it('gives every place a row before repeating one', () => {
+    const rows = [
+      address({ residential_area: { code: 1, feature_id: 1, name: 'Šiaulių m.' } }),
+      address({ residential_area: { code: 1, feature_id: 1, name: 'Šiaulių m.' } }),
+      address({ residential_area: { code: 2, feature_id: 2, name: 'Vilniaus m.' } }),
+    ];
+
+    assert.deepEqual(
+      spreadByPlace(rows).map((a) => a.residential_area?.name),
+      ['Šiaulių m.', 'Vilniaus m.', 'Šiaulių m.'],
+    );
   });
 });
 
