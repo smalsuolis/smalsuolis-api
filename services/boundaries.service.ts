@@ -28,7 +28,9 @@ export default class BoundariesService extends moleculer.Service {
     },
     auth: EndpointType.PUBLIC,
     params: {
-      search: 'string|min:3|trim',
+      // Capped because the parse below walks every whitespace position of what it
+      // is handed: 100k characters of it block this process for nine seconds.
+      search: 'string|min:3|max:100|trim',
     },
     timeout: 30 * 1000,
   })
