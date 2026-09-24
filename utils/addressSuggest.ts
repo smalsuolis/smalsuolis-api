@@ -48,6 +48,15 @@ export const parseAddressInput = (
   return { street, ...place };
 };
 
+// The registry reads `contains: ''` — and a wildcard-only string, since `%` is
+// one — as "match everything": all 60,279 streets, which outruns the name walk
+// and drops the query onto a scan of every one of the 1.1M address rows. ", ab"
+// and ",,," parse to exactly that, and the endpoint's own min:3 counts the comma.
+const NAME_MIN_CHARS = 3;
+
+export const isSearchableName = (name: string) =>
+  name.replace(/[%_\s]/g, '').length >= NAME_MIN_CHARS;
+
 // The registry holds place names in the genitive ("Vilniaus m. sav."), people
 // type the nominative ("Vilnius"), and `contains` is a plain substring match —
 // so the ending has to go before the two can meet.
@@ -370,6 +379,7 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
   // Split the input into a street part, an optional house number and the place
   // it names: "Vilniaus g. 2, Vilnius" → "Vilniaus g.", "2", "Vilnius".
   const { street, houseNumber, locality } = parseAddressInput(search);
+  if (!isSearchableName(street)) return [];
 
   const cityPlaces = await resolveCityPlaces();
 
@@ -450,14 +460,15 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
       ),
     );
 
-    // One branch failing leaves the other's rows worth showing; both failing is
-    // the registry being down, which the caller should hear about.
     const failed = pages.filter((page) => page.status === 'rejected');
-    if (failed.length === pages.length) throw (failed[0] as PromiseRejectedResult).reason;
-
     const items = pages.flatMap((page) =>
       page.status === 'fulfilled' ? page.value.items || [] : [],
     );
+
+    // A surviving branch's rows are worth showing. An empty list is not, while a
+    // branch is failing: the caller caches "no such address" for a day, and the
+    // reader is told their street does not exist.
+    if (failed.length && !items.length) throw (failed[0] as PromiseRejectedResult).reason;
     const ranked = rankByPlace(items, municipalityCodes);
     const ordered = municipalityCodes.length ? ranked : spreadByPlace(ranked);
 

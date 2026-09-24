@@ -9,6 +9,7 @@ import {
   CodeSet,
   collectCodes,
   WalkGuard,
+  isSearchableName,
   localityStem,
   orderByPlaceKind,
   orderMunicipalities,
@@ -85,6 +86,21 @@ describe('parseAddressInput', () => {
     // The registry has no such split for "Kalno 3-oji g." — the trailing token
     // must start with a digit AND end the input.
     assert.deepEqual(parseAddressInput('Kalno 3-oji g.'), { street: 'Kalno 3-oji g.' });
+  });
+});
+
+describe('isSearchableName', () => {
+  it('refuses a name the registry would read as "everything"', () => {
+    // The endpoint's min:3 counts the comma, so these reach the search.
+    for (const input of [', ab', ',,,', 'a 1', '%%%', '  x  ']) {
+      assert.equal(isSearchableName(parseAddressInput(input).street), false, input);
+    }
+  });
+
+  it('keeps the shortest fragment worth searching for', () => {
+    for (const input of ['Ged', 'sod', 'J. B. g.', 'Vilniaus g. 2']) {
+      assert.equal(isSearchableName(parseAddressInput(input).street), true, input);
+    }
   });
 });
 
