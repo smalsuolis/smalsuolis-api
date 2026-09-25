@@ -5,6 +5,7 @@ import {
   buildAddressFilters,
   buildLabel,
   buildNameFilters,
+  centrePoint,
   clearCodeCache,
   CodeSet,
   collectCodes,
@@ -16,6 +17,7 @@ import {
   parseAddressInput,
   rankByPlace,
   resolveCodes,
+  settlementLabel,
   spreadByPlace,
   toSuggestions,
 } from '../utils/addressSuggest';
@@ -80,6 +82,35 @@ describe('parseAddressInput', () => {
       street: 'Kaltinėnų mstl.',
       locality: 'Šilalės r.',
     });
+  });
+
+  it('reads a place written without a comma', () => {
+    // People type the place straight after the number as often as not.
+    assert.deepEqual(parseAddressInput('Dubysos g 6 Noreikiškės'), {
+      street: 'Dubysos g',
+      houseNumber: '6',
+      locality: 'Noreikiškės',
+    });
+    assert.deepEqual(parseAddressInput('Laukelių 10 Ukmergės r.'), {
+      street: 'Laukelių',
+      houseNumber: '10',
+      locality: 'Ukmergės r.',
+    });
+  });
+
+  it('splits on the last number, so a numbered street keeps its name', () => {
+    assert.deepEqual(parseAddressInput('Kalno 3-oji g. 5 Kaunas'), {
+      street: 'Kalno 3-oji g.',
+      houseNumber: '5',
+      locality: 'Kaunas',
+    });
+  });
+
+  it('does not read the street kind as a place', () => {
+    // "Kalno 3-oji g." is one name: cutting it at the number would leave the
+    // street "Kalno" in a place called "g.".
+    assert.deepEqual(parseAddressInput('Kalno 3-oji g.'), { street: 'Kalno 3-oji g.' });
+    assert.deepEqual(parseAddressInput('Vytauto 5 gatvė'), { street: 'Vytauto 5 gatvė' });
   });
 
   it('does not read a numbered street name as a house number', () => {
@@ -176,6 +207,34 @@ describe('rankByPlace', () => {
     assert.deepEqual(
       rankByPlace([district, city]).map((a) => a.municipality?.name),
       ['Vilniaus m. sav.', 'Biržų r. sav.'],
+    );
+  });
+
+  it('leads with the settlement someone named, not its neighbours', () => {
+    // "Dubysos g. 6, Noreikiškės" must not answer with the Dubysos g. on the
+    // other side of the same district.
+    const named = address({
+      residential_area: { code: 21925, feature_id: 1, name: 'Noreikiškių k.' },
+      municipality: {
+        code: 52,
+        feature_id: 9,
+        name: 'Kauno r. sav.',
+        county: { code: 10, feature_id: 1, name: 'Kauno apskr.' },
+      },
+    });
+    const neighbour = address({
+      residential_area: { code: 30000, feature_id: 2, name: 'Akademijos mstl.' },
+      municipality: {
+        code: 52,
+        feature_id: 9,
+        name: 'Kauno r. sav.',
+        county: { code: 10, feature_id: 1, name: 'Kauno apskr.' },
+      },
+    });
+
+    assert.deepEqual(
+      rankByPlace([neighbour, named], [52], [21925]).map((a) => a.residential_area?.name),
+      ['Noreikiškių k.', 'Akademijos mstl.'],
     );
   });
 
@@ -278,6 +337,74 @@ describe('buildAddressFilters', () => {
     // The registry reads `filters: []` as "no filter" and answers with the first
     // page of all 1.1M addresses, so the caller must not search on an empty list.
     assert.deepEqual(buildAddressFilters({ streetCodes: [], areaCodes: [] }), []);
+  });
+});
+
+describe('centrePoint', () => {
+  it('hands a point over as it is', () => {
+    const point = { type: 'Point', coordinates: [25.28, 54.69] };
+    assert.deepEqual(centrePoint(point), point);
+  });
+
+  it('reads a settlement border as the middle of that border', () => {
+    // Every suggestion is a point: the map centres on it and a subscription is
+    // drawn around it. A settlement is served as a polygon.
+    const square = {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [25, 55],
+          [25, 56],
+          [26, 56],
+          [26, 55],
+          [25, 55],
+        ],
+      ],
+    };
+    assert.deepEqual(centrePoint(square), { type: 'Point', coordinates: [25.5, 55.5] });
+  });
+
+  it('walks a multipolygon to its corners', () => {
+    const two = {
+      type: 'MultiPolygon',
+      coordinates: [
+        [
+          [
+            [0, 0],
+            [0, 2],
+            [2, 2],
+            [2, 0],
+          ],
+        ],
+        [
+          [
+            [8, 8],
+            [8, 10],
+            [10, 10],
+            [10, 8],
+          ],
+        ],
+      ],
+    };
+    assert.deepEqual(centrePoint(two), { type: 'Point', coordinates: [5, 5] });
+  });
+
+  it('has nothing to offer for a geometry that is not there', () => {
+    assert.equal(centrePoint(undefined), undefined);
+    assert.equal(centrePoint({ type: 'Polygon', coordinates: [] }), undefined);
+  });
+});
+
+describe('settlementLabel', () => {
+  it('names the settlement and the municipality it sits in', () => {
+    assert.equal(
+      settlementLabel({ name: 'Laukelių k.', municipality: { name: 'Ukmergės r. sav.' } }),
+      'Laukelių k., Ukmergės r. sav.',
+    );
+  });
+
+  it('never trails a comma when the municipality is missing', () => {
+    assert.equal(settlementLabel({ name: 'Laukelių k.', municipality: null }), 'Laukelių k.');
   });
 });
 
