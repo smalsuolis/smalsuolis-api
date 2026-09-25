@@ -34,6 +34,13 @@ const PREFERRED_CODES = 12;
 // Split free-text input into the parts the registry can filter on.
 // "Vilniaus g. 2, Vilnius" → { street: 'Vilniaus g.', houseNumber: '2', locality: 'Vilnius' }
 // "Gedimino"              → { street: 'Gedimino' }
+// A place is written after a comma or not at all — "Dubysos g 6 Noreikiškės" —
+// and when it isn't, the house number is what stands between the street and the
+// place. Except where that number belongs to the street's own name, which its
+// kind gives away: "Kalno 3-oji g." is one name, not a street and a place.
+const STREET_KIND =
+  /^(g|gatvė|pr|prospektas|al|alėja|pl|plentas|kel|kelias|skg|skersgatvis|tak|takas|a|aikštė|kaimas|k|km)\.?$/i;
+
 export const parseAddressInput = (
   input: string,
 ): { street: string; houseNumber?: string; locality?: string } => {
@@ -41,11 +48,21 @@ export const parseAddressInput = (
   const locality = rest.join(',').trim();
   const place = locality ? { locality } : null;
   const street = beforeComma.trim();
+
   // Trailing token starting with a digit is the plot/building number.
-  const match = street.match(/^(.*?)[\s]+(\d[\w-]*)$/);
-  if (match) {
-    return { street: match[1].trim(), houseNumber: match[2], ...place };
+  const trailing = street.match(/^(.*?)[\s]+(\d[\w-]*)$/);
+  if (trailing) {
+    return { street: trailing[1].trim(), houseNumber: trailing[2], ...place };
   }
+  if (place) return { street, ...place };
+
+  // Greedy, so the last number is the one that splits: "Kalno 3-oji g. 5 Kaunas"
+  // keeps its name whole.
+  const inner = street.match(/^(.*)[\s]+(\d[\w-]*)[\s]+(.+)$/);
+  if (inner && !STREET_KIND.test(inner[3].trim())) {
+    return { street: inner[1].trim(), houseNumber: inner[2], locality: inner[3].trim() };
+  }
+
   return { street, ...place };
 };
 
@@ -163,7 +180,19 @@ export const orderByPlaceKind = (rows: CodeRow[], cityPlaces: string[] = []): nu
 // carries the order it should be read in (city before the district around it);
 // with no place named, the seven city municipalities lead. Within one
 // municipality the kind of settlement decides.
-export const rankByPlace = (items: Address[], municipalityCodes: number[] = []): Address[] => {
+export const rankByPlace = (
+  items: Address[],
+  municipalityCodes: number[] = [],
+  areaCodes: number[] = [],
+): Address[] => {
+  // A named settlement shares its municipality with hundreds of others, so its
+  // own rows have to say so: "Dubysos g. 6, Noreikiškės" must not answer with
+  // the Dubysos g. on the other side of Kauno r.
+  const settlementRank = (a: Address) =>
+    areaCodes.length && a.residential_area?.code && areaCodes.includes(a.residential_area.code)
+      ? 0
+      : 1;
+
   const municipalityRank = (a: Address) => {
     if (!municipalityCodes.length)
       return CITY_MUNICIPALITY.test(a.municipality?.name || '') ? 0 : 1;
@@ -177,7 +206,10 @@ export const rankByPlace = (items: Address[], municipalityCodes: number[] = []):
   };
 
   return [...items].sort(
-    (a, b) => municipalityRank(a) - municipalityRank(b) || placeRank(a) - placeRank(b),
+    (a, b) =>
+      settlementRank(a) - settlementRank(b) ||
+      municipalityRank(a) - municipalityRank(b) ||
+      placeRank(a) - placeRank(b),
   );
 };
 
@@ -246,25 +278,23 @@ export interface WalkGuard {
 // service cannot help.
 const CODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CODE_CACHE_MAX_ENTRIES = 2000;
-const codeCache = new Map<string, { value: CodeSet; expiry: number }>();
+const codeCache = new Map<string, { value: unknown; expiry: number }>();
 
 export const clearCodeCache = () => {
   codeCache.clear();
   cityPlacesCache = undefined;
 };
 
-export const resolveCodes = async (
+export const resolveCached = async <T>(
   key: string,
-  resolve: () => Promise<CodeSet>,
-): Promise<CodeSet> => {
+  resolve: () => Promise<T>,
+  keep: (value: T) => boolean = () => true,
+): Promise<T> => {
   const hit = codeCache.get(key);
-  if (hit && Date.now() < hit.expiry) return hit.value;
+  if (hit && Date.now() < hit.expiry) return hit.value as T;
 
   const value = await resolve();
-  // An incomplete set is never cached. Giving up means either "the name matches
-  // more streets than we walk" or "the registry answered 500", and the two look
-  // identical here - caching the blip would pin the slow path for a day.
-  if (!value.complete) return value;
+  if (!keep(value)) return value;
 
   if (codeCache.size >= CODE_CACHE_MAX_ENTRIES) {
     codeCache.delete(codeCache.keys().next().value);
@@ -272,6 +302,12 @@ export const resolveCodes = async (
   codeCache.set(key, { value, expiry: Date.now() + CODE_CACHE_TTL_MS });
   return value;
 };
+
+// An incomplete set is never kept. Giving up means either "the name matches more
+// streets than we walk" or "the registry answered 500", and the two look
+// identical here - caching the blip would pin the slow path for a day.
+export const resolveCodes = (key: string, resolve: () => Promise<CodeSet>): Promise<CodeSet> =>
+  resolveCached(key, resolve, (value) => value.complete);
 
 // Walk a cursor-paginated name search and collect every matching code.
 export const collectCodes = async (
@@ -355,21 +391,52 @@ export const orderMunicipalities = (
     .map((m) => m.code);
 };
 
-// Resolving the named place costs one small request against a table of sixty
-// rows, and the answer never changes, so it is kept like the street codes are.
-export const resolveMunicipalityCodes = async (locality: string): Promise<number[]> => {
-  const stem = localityStem(locality);
-  if (stem.length < 3) return [];
+export interface Place {
+  // The municipalities to narrow the search to. A settlement cannot narrow it
+  // itself: filtering addresses by a residential-area code is the call the
+  // registry answers 500 to for most villages.
+  municipalityCodes: number[];
+  // The settlements the name matched, so their rows can lead the ones that
+  // merely share a municipality with them.
+  areaCodes: number[];
+}
 
-  const { codes } = await resolveCodes(`municipality:${stem.toLowerCase()}`, async () => {
-    const found = await municipalitiesSearch({
+const NO_PLACE: Place = { municipalityCodes: [], areaCodes: [] };
+
+// Resolving the named place costs one small request, and the answer never
+// changes, so it is kept like the street codes are.
+export const resolvePlace = async (locality: string): Promise<Place> => {
+  const stem = localityStem(locality);
+  if (stem.length < 3) return NO_PLACE;
+
+  return resolveCached(`place:${stem.toLowerCase()}`, async () => {
+    const municipalities = await municipalitiesSearch({
       requestBody: { filters: [{ municipalities: { name: { contains: stem } } }] },
       size: PAGE_SIZE,
     });
-    return { codes: orderMunicipalities(found.items || [], locality), complete: true };
-  });
+    if (municipalities.items?.length) {
+      return {
+        municipalityCodes: orderMunicipalities(municipalities.items, locality),
+        areaCodes: [],
+      };
+    }
 
-  return codes;
+    // Most places people name are not municipalities: "Noreikiškės" is a village
+    // in Kauno r., and looking for a municipality of that name found nothing, so
+    // the place was dropped and the answer came from Šiauliai.
+    const areas = await residentialAreasSearch({
+      requestBody: { filters: [{ residential_areas: { name: { contains: stem } } }] },
+      size: PAGE_SIZE,
+    });
+    const rows = areas.items || [];
+
+    return {
+      municipalityCodes: [...new Set(rows.map((area) => area.municipality?.code))].filter(
+        (code): code is number => typeof code === 'number',
+      ),
+      areaCodes: rows.map((area) => area.code),
+    };
+  });
 };
 
 // The registry answers 500 to an address query for most villages — 19 of a
@@ -504,11 +571,12 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
   // cover urban (street) and rural (residential area) input. The two name walks
   // share a guard, so when one gives up the other stops at its next page instead
   // of walking to the end for a result nothing will use.
-  const [municipalityCodes, streets, areasByName] = await Promise.all([
-    locality ? resolveMunicipalityCodes(locality) : Promise.resolve([]),
+  const [place, streets, areasByName] = await Promise.all([
+    locality ? resolvePlace(locality) : Promise.resolve(NO_PLACE),
     streetCodesOf(street),
     areaCodesOf(street),
   ]);
+  const { municipalityCodes } = place;
 
   // Nothing carries that name — and a settlement is the one part people type in
   // the nominative ("Kaltinėnai") while the registry holds it in the genitive
@@ -558,7 +626,7 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
     // branch is failing: the caller caches "no such address" for a day, and the
     // reader is told their street does not exist.
     if (failed.length && !items.length) throw (failed[0] as PromiseRejectedResult).reason;
-    const ranked = rankByPlace(items, municipalityCodes);
+    const ranked = rankByPlace(items, municipalityCodes, place.areaCodes);
     const ordered = municipalityCodes.length ? ranked : spreadByPlace(ranked);
 
     return toSuggestions(ordered).slice(0, SUGGEST_LIMIT);
@@ -611,7 +679,10 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
   });
   if (found.length) return found;
 
-  const settlements = await settlementSuggestions(areas.codes, municipalityCodes).catch(() => []);
+  const settlements = await settlementSuggestions(
+    areas.codes.length ? areas.codes : place.areaCodes,
+    municipalityCodes,
+  ).catch(() => []);
   if (settlements.length) return settlements;
   if (failure) throw failure;
 

@@ -84,6 +84,35 @@ describe('parseAddressInput', () => {
     });
   });
 
+  it('reads a place written without a comma', () => {
+    // People type the place straight after the number as often as not.
+    assert.deepEqual(parseAddressInput('Dubysos g 6 Noreikiškės'), {
+      street: 'Dubysos g',
+      houseNumber: '6',
+      locality: 'Noreikiškės',
+    });
+    assert.deepEqual(parseAddressInput('Laukelių 10 Ukmergės r.'), {
+      street: 'Laukelių',
+      houseNumber: '10',
+      locality: 'Ukmergės r.',
+    });
+  });
+
+  it('splits on the last number, so a numbered street keeps its name', () => {
+    assert.deepEqual(parseAddressInput('Kalno 3-oji g. 5 Kaunas'), {
+      street: 'Kalno 3-oji g.',
+      houseNumber: '5',
+      locality: 'Kaunas',
+    });
+  });
+
+  it('does not read the street kind as a place', () => {
+    // "Kalno 3-oji g." is one name: cutting it at the number would leave the
+    // street "Kalno" in a place called "g.".
+    assert.deepEqual(parseAddressInput('Kalno 3-oji g.'), { street: 'Kalno 3-oji g.' });
+    assert.deepEqual(parseAddressInput('Vytauto 5 gatvė'), { street: 'Vytauto 5 gatvė' });
+  });
+
   it('does not read a numbered street name as a house number', () => {
     // The registry has no such split for "Kalno 3-oji g." — the trailing token
     // must start with a digit AND end the input.
@@ -178,6 +207,34 @@ describe('rankByPlace', () => {
     assert.deepEqual(
       rankByPlace([district, city]).map((a) => a.municipality?.name),
       ['Vilniaus m. sav.', 'Biržų r. sav.'],
+    );
+  });
+
+  it('leads with the settlement someone named, not its neighbours', () => {
+    // "Dubysos g. 6, Noreikiškės" must not answer with the Dubysos g. on the
+    // other side of the same district.
+    const named = address({
+      residential_area: { code: 21925, feature_id: 1, name: 'Noreikiškių k.' },
+      municipality: {
+        code: 52,
+        feature_id: 9,
+        name: 'Kauno r. sav.',
+        county: { code: 10, feature_id: 1, name: 'Kauno apskr.' },
+      },
+    });
+    const neighbour = address({
+      residential_area: { code: 30000, feature_id: 2, name: 'Akademijos mstl.' },
+      municipality: {
+        code: 52,
+        feature_id: 9,
+        name: 'Kauno r. sav.',
+        county: { code: 10, feature_id: 1, name: 'Kauno apskr.' },
+      },
+    });
+
+    assert.deepEqual(
+      rankByPlace([neighbour, named], [52], [21925]).map((a) => a.residential_area?.name),
+      ['Noreikiškių k.', 'Akademijos mstl.'],
     );
   });
 
