@@ -4,6 +4,7 @@ import {
   AddressesSearchFilterRequest,
   addressesSearch,
   municipalitiesSearch,
+  residentialAreasGetWithGeometry,
   residentialAreasSearch,
   streetsSearch,
 } from './boundaries';
@@ -371,6 +372,94 @@ export const resolveMunicipalityCodes = async (locality: string): Promise<number
   return codes;
 };
 
+// The registry answers 500 to an address query for most villages — 19 of a
+// 30-village sample, each after some four seconds — so a rural address often
+// cannot be reached at all. The settlement itself it serves in 0.3s, and it is
+// the place the reader was pointing at, so it is offered rather than nothing.
+const SETTLEMENT_LIMIT = 3;
+
+// The registry answers 500 and 502 to these lookups often enough that one
+// retry is the difference between a village showing up and a reader being told
+// their address does not exist.
+const retried = async <T>(run: () => Promise<T>): Promise<T> => {
+  try {
+    return await run();
+  } catch {
+    return run();
+  }
+};
+
+// Every suggestion is a point, whatever it names: the reader's map centres on
+// it and a subscription is drawn around it. A settlement is served as its
+// border, so the middle of that border is what is handed over.
+const positions = (coordinates: any): number[][] =>
+  typeof coordinates?.[0] === 'number' ? [coordinates] : (coordinates || []).flatMap(positions);
+
+export const centrePoint = (geometry: any) => {
+  if (!geometry?.coordinates) return undefined;
+  if (geometry.type === 'Point') return geometry;
+
+  const points = positions(geometry.coordinates);
+  if (!points.length) return undefined;
+
+  // Reduced rather than spread into Math.min: a settlement border runs to
+  // thousands of points, and the spread would outgrow the argument limit.
+  const bounds = points.reduce(
+    (acc, [x, y]) => ({
+      minX: Math.min(acc.minX, x),
+      maxX: Math.max(acc.maxX, x),
+      minY: Math.min(acc.minY, y),
+      maxY: Math.max(acc.maxY, y),
+    }),
+    { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity },
+  );
+
+  return {
+    type: 'Point',
+    coordinates: [(bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2],
+  };
+};
+
+export const settlementLabel = (area: {
+  name?: string | null;
+  municipality?: { name?: string | null } | null;
+}): string => [area.name, area.municipality?.name].filter(Boolean).join(', ');
+
+export const settlementSuggestions = async (
+  areaCodes: number[],
+  municipalityCodes: number[],
+): Promise<AddressSuggestion[]> => {
+  if (!areaCodes.length) return [];
+
+  const found = await retried(() =>
+    residentialAreasSearch({
+      requestBody: { filters: [{ residential_areas: { codes: areaCodes.slice(0, PAGE_SIZE) } }] },
+      size: PAGE_SIZE,
+    }),
+  );
+
+  const rows = (found.items || []).filter(
+    (area) => !municipalityCodes.length || municipalityCodes.includes(area.municipality?.code),
+  );
+  // A settlement carries its geometry on its own endpoint, one request each, so
+  // the list is cut to what a reader reads before any of them are fetched.
+  const codes = orderByPlaceKind(rows).slice(0, SETTLEMENT_LIMIT);
+  const detailed = await Promise.all(
+    codes.map((code) =>
+      retried(() => residentialAreasGetWithGeometry({ code, srid: 4326 })).catch(() => undefined),
+    ),
+  );
+
+  return detailed
+    .filter((area) => !!area?.geometry?.data)
+    .map((area) => ({
+      code: area!.code,
+      label: settlementLabel(area!),
+      geometry: centrePoint(wktToGeoJSON(area!.geometry.data)),
+    }))
+    .filter((suggestion) => !!suggestion.label && !!suggestion.geometry);
+};
+
 // Two steps, because the registry indexes address rows by street / area code but
 // not by the joined street or area NAME. Filtering 1.1M addresses by name is a
 // full scan (~4-8s); resolving the name to codes first and filtering by those
@@ -475,39 +564,56 @@ export const searchAddressSuggestions = async (search: string): Promise<AddressS
     return toSuggestions(ordered).slice(0, SUGGEST_LIMIT);
   };
 
-  // A fragment like "sod" matches thousands of streets. Fall back to the scan so
-  // those inputs keep their exact results instead of a truncation.
-  if (!streets.complete || !areas.complete) {
-    return ask(buildNameFilters(street, houseNumber, municipalityCodes), false);
-  }
+  const addresses = async (): Promise<AddressSuggestion[]> => {
+    // A fragment like "sod" matches thousands of streets. Fall back to the scan
+    // so those inputs keep their exact results instead of a truncation.
+    if (!streets.complete || !areas.complete) {
+      return ask(buildNameFilters(street, houseNumber, municipalityCodes), false);
+    }
 
-  const allCodes = {
-    streetCodes: streets.codes,
-    areaCodes: areas.codes,
-    houseNumber,
-    municipalityCodes,
+    const allCodes = {
+      streetCodes: streets.codes,
+      areaCodes: areas.codes,
+      houseNumber,
+      municipalityCodes,
+    };
+
+    // The named place narrows the query on its own, so every street that matched
+    // the name stays in play.
+    if (municipalityCodes.length) return ask(buildAddressFilters(allCodes));
+
+    // With no place named, "Vilniaus g." matches 228 streets and some 8000
+    // addresses, and one page of those never reaches Vilnius. Ask the
+    // best-ranked places first — the code lists are ordered, cities at the front.
+    const preferred = await ask(
+      buildAddressFilters({
+        ...allCodes,
+        streetCodes: streets.codes.slice(0, PREFERRED_CODES),
+        areaCodes: areas.codes.slice(0, PREFERRED_CODES),
+      }),
+    );
+    if (preferred.length >= SUGGEST_LIMIT) return preferred;
+
+    // A name no city carries — or a house number only a village has — needs the
+    // rest of the matches to fill the list out.
+    const rest = await ask(buildAddressFilters(allCodes));
+    const seen = new Set(preferred.map((s) => s.code));
+
+    return [...preferred, ...rest.filter((s) => !seen.has(s.code))].slice(0, SUGGEST_LIMIT);
   };
 
-  // The named place narrows the query on its own, so every street that matched
-  // the name stays in play.
-  if (municipalityCodes.length) return ask(buildAddressFilters(allCodes));
+  // The registry failing is not the same as there being nothing: the caller
+  // caches an empty list for a day, so the error has to survive the fallback.
+  let failure: unknown;
+  const found = await addresses().catch((err) => {
+    failure = err;
+    return [] as AddressSuggestion[];
+  });
+  if (found.length) return found;
 
-  // With no place named, "Vilniaus g." matches 228 streets and some 8000
-  // addresses, and one page of those never reaches Vilnius. Ask the best-ranked
-  // places first — the code lists are ordered, cities at the front.
-  const preferred = await ask(
-    buildAddressFilters({
-      ...allCodes,
-      streetCodes: streets.codes.slice(0, PREFERRED_CODES),
-      areaCodes: areas.codes.slice(0, PREFERRED_CODES),
-    }),
-  );
-  if (preferred.length >= SUGGEST_LIMIT) return preferred;
+  const settlements = await settlementSuggestions(areas.codes, municipalityCodes).catch(() => []);
+  if (settlements.length) return settlements;
+  if (failure) throw failure;
 
-  // A name no city carries — or a house number only a village has — needs the
-  // rest of the matches to fill the list out.
-  const rest = await ask(buildAddressFilters(allCodes));
-  const seen = new Set(preferred.map((s) => s.code));
-
-  return [...preferred, ...rest.filter((s) => !seen.has(s.code))].slice(0, SUGGEST_LIMIT);
+  return [];
 };
